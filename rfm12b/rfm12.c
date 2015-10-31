@@ -43,6 +43,8 @@
 
 #include <string.h>
 
+#include <mac_layer.h>
+
 #include "rfm12_config.h"
 
 /************************
@@ -98,6 +100,11 @@ static inline uint8_t tx_pop()
 	uint8_t read = tx.read;
 	uint8_t data = *(tx.buffer + read);
 	tx.read = (read + 1) & RFM12_TX_BUFFER_MASK;
+#if 0
+	char c = (char)data;
+	if (isprint(c))
+		putchar(c);
+#endif
 	return data;
 }
 
@@ -131,12 +138,13 @@ void rfm12_send(uint8_t length, char *buffer)
 	tx.write = (write + length) & RFM12_TX_BUFFER_MASK;
 	if (ctrl.mode == TX)
 		return;
-	ctrl.mode = TX;
 	// Initialise transmission
 	RFM12_INT_OFF();
+	ctrl.mode = TX;
 	rfm12_data(RFM12_CMD_PWRMGT | PWRMGT_DEFAULT ); /* disable receiver */
 	rfm12_data(RFM12_CMD_TX | tx_pop());
 	rfm12_data(RFM12_CMD_PWRMGT | PWRMGT_DEFAULT | RFM12_PWRMGT_ET);
+	RFM12_INT_FLAG = (1<<RFM12_FLAG_BIT);
 	RFM12_INT_ON();
 }
 
@@ -147,7 +155,7 @@ uint8_t rfm12_recv(uint8_t length, char *buffer)
 		return 0;
 	uint8_t read = rx.read;
 	length = length < len ? length : len;
-	if (read > RFM12_RX_BUFFER_SIZE - len) {
+	if (read > RFM12_RX_BUFFER_SIZE - length) {
 		// Remain bytes to end of buffer
 		uint8_t remain = RFM12_RX_BUFFER_SIZE - read;
 		memcpy(buffer, rx.buffer + read, remain);
@@ -192,7 +200,7 @@ ISR(RFM12_INT_VECT)
 	RFM12_INT_OFF();
 	uint8_t status;
 	uint8_t recheck_interrupt;
-	uint8_t debug = 0;
+	//uint8_t debug = 0;
 
 	do {
 #ifdef __PLATFORM_AVR__
@@ -203,10 +211,15 @@ ISR(RFM12_INT_VECT)
 		//first we read the first byte of the status register
 		//to get the interrupt flags
 		status = rfm12_read_int_flags_inline();
+#if 0
 		if (debug == 0) {
 			printf("<%02x>", status);
 			debug++;
 		}
+#endif
+#if 0
+		printf("<%02x>", status);
+#endif
 
 		//if we use at least one of the status bits, we need to check the status again
 		//for the case in which another interrupt condition occured while we were handeling
@@ -254,7 +267,16 @@ ISR(RFM12_INT_VECT)
 			//see what we have to do (start rx, rx or tx)
 			switch (ctrl.mode) {
 			case RX:	// Receiving
+#if 1
+				{
+					char c = rfm12_read(RFM12_CMD_READ);
+					if (isprint(c))
+						putchar(c);
+					rx_push(c);
+				}
+#else
 				rx_push(rfm12_read(RFM12_CMD_READ));
+#endif
 				continue;
 			default:	// Transmitting
 				if (!tx_end()) {
@@ -290,10 +312,6 @@ ISR(RFM12_INT_VECT)
 			#endif /* !(RFM12_TRANSMIT_ONLY) */
 		}
 	} while (recheck_interrupt);
-
-	#if RFM12_UART_DEBUG >= 2
-		uart_putc('E');
-	#endif
 
 	//RFM12_INT_FLAG = (1<<RFM12_FLAG_BIT);
 	//turn the int back on
@@ -337,12 +355,12 @@ static const uint16_t init_cmds[] = {
 	RFM12_CMD_RXCTRL_DEFAULT,
 
 	//automatic clock lock control(AL), digital Filter(!S),
-	//Data quality detector value 3, fast clock recovery lock
-	(RFM12_CMD_DATAFILTER | RFM12_DATAFILTER_AL | RFM12_DATAFILTER_ML | 3),
+	//Data quality detector value 3, slow clock recovery lock
+	(RFM12_CMD_DATAFILTER | RFM12_DATAFILTER_AL /*| RFM12_DATAFILTER_ML*/ | 3),
 
-	//2 Byte Sync Pattern, Always fill fifo,
+	//1 Byte Sync Pattern, Pattern fill fifo,
 	//disable sensitive reset, Fifo filled interrupt at 1 byte
-	(RFM12_CMD_FIFORESET | RFM12_FIFORESET_AL | RFM12_FIFORESET_DR | (1 << 4)),
+	(RFM12_CMD_FIFORESET | CLEAR_FIFO_INLINE),
 
 	//defined above (so shadow register is inited with same value)
 	RFM12_CMD_AFC_DEFAULT,
@@ -422,6 +440,9 @@ void rfm12_init(void) {
 		for (x = 0; x < ( sizeof(init_cmds) / 2) ; x++)
 			rfm12_data(init_cmds[x]);
 	#endif
+
+	//Sync pattern
+	rfm12_data(RFM12_CMD_SYNCPATTERN | mac_sync_byte()),
 
 	#ifdef RX_ENTER_HOOK
 		RX_ENTER_HOOK;

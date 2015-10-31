@@ -48,6 +48,8 @@ extern "C" {
 
 //this was missing, but is very important to set the config options for structs and such
 #include "include/rfm12_core.h"
+#include <ctype.h>
+#include <stdio.h>
 
 /************************
  * private control structs
@@ -69,7 +71,7 @@ struct rfm12_tx_buffer_t
 struct rfm12_rx_buffer_t
 {
 	volatile uint8_t write;
-	uint8_t read;
+	volatile uint8_t read;
 	uint8_t buffer[RFM12_RX_BUFFER_SIZE];
 };
 

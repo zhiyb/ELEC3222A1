@@ -134,11 +134,13 @@ static inline void spi_init(void) {
 
 	#if !(RFM12_SPI_SOFTWARE)
 		// F_OSC / 2
-#if 1
+#if 0
 		SPCR = _BV(SPE) | _BV(MSTR);
 		SPSR = _BV(SPI2X);
 #else
-		SPCR = (1<<SPE) | (1<<MSTR) | (1<<SPR0); //SPI Master, clk/16
+		//SPI Master, clk/8
+		SPCR = (1<<SPE) | (1<<MSTR) | (1<<SPR0);
+		SPSR = _BV(SPI2X);
 #endif
 	#endif
 }

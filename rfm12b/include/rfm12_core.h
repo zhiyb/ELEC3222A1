@@ -289,14 +289,15 @@
 /*
  * the following macros help to manage the rfm12 fifo
  * default fiforeset is as follows:
- * 2 Byte Sync Pattern, disable sensitive reset, fifo filled interrupt at 8 bits
+ * 1 Byte Sync Pattern, disable sensitive reset, fifo filled interrupt at 8 bits
  */
+#define FIFO_SETTINGS	(RFM12_FIFORESET_SP | RFM12_FIFORESET_DR | (8 << 4))
 //default fiforeset register value to accept data
-#define ACCEPT_DATA (RFM12_CMD_FIFORESET | RFM12_FIFORESET_DR | (8<<4) | RFM12_FIFORESET_FF)
-#define ACCEPT_DATA_INLINE (RFM12_FIFORESET_DR | (8<<4) | RFM12_FIFORESET_FF)
+#define ACCEPT_DATA (RFM12_CMD_FIFORESET | FIFO_SETTINGS | RFM12_FIFORESET_FF)
+#define ACCEPT_DATA_INLINE (FIFO_SETTINGS | RFM12_FIFORESET_FF)
 //default fiforeset register value to clear fifo
-#define CLEAR_FIFO (RFM12_CMD_FIFORESET | RFM12_FIFORESET_DR | (8<<4))
-#define CLEAR_FIFO_INLINE (RFM12_FIFORESET_DR | (8<<4))
+#define CLEAR_FIFO (RFM12_CMD_FIFORESET | FIFO_SETTINGS)
+#define CLEAR_FIFO_INLINE (FIFO_SETTINGS)
 
 //this macro helps to encapsulate the return values, when noreturn is set to on
 #if (RFM12_NORETURNS)
