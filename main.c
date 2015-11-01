@@ -13,7 +13,14 @@
 
 void dll_data_handler(const uint8_t data)
 {
-	static uint8_t first = 0;
+	static uint8_t first = 1;
+	if (PINC & _BV(5)) {
+		if (data == 0xce) {	// End of data
+			phy_receive();
+			first = 1;
+		}
+		return;
+	}
 	if (first) {
 		fputs_P(PSTR("\e[92m"), stdout);
 		first = 0;
@@ -22,7 +29,7 @@ void dll_data_handler(const uint8_t data)
 		putchar(data);
 	else
 		printf_P(PSTR("<%02x>"), data);
-	if (data == 0xaf) {	// End of data
+	if (data == 0xce) {	// End of data
 		phy_receive();
 		putchar('\n');
 		first = 1;
@@ -31,7 +38,7 @@ void dll_data_handler(const uint8_t data)
 
 uint8_t dll_data_request(uint8_t *buffer)
 {
-	static char string[] = "\xaaHello, world!\xaf";
+	static char string[] = "\xecHello, \xaaworld!\xce";
 	static char *ptr = string;
 	if (ptr == string + sizeof(string)) {
 		ptr = string;
