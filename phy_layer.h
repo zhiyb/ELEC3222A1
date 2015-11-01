@@ -17,6 +17,8 @@ uint8_t phy_mode();
 void phy_free();
 // Start transmission
 void phy_transmit();
+// Reset receive mode (waiting for sync byte)
+void phy_receive();
 
 #ifdef __cplusplus
 }
