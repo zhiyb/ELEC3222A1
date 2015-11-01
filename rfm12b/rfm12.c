@@ -254,13 +254,8 @@ uint8_t rfm12_recv(uint8_t length, char *buffer)
 */
 
 #include <stdio.h>
-//if polling is used, do not define an interrupt handler, but a polling function
-#if (RFM12_USE_POLLING)
-void rfm12_poll(void)
-#else
 //ISR(RFM12_INT_VECT, ISR_NOBLOCK)
 ISR(RFM12_INT_VECT)
-#endif
 {
 	RFM12_INT_OFF();
 	uint8_t status;
@@ -276,15 +271,6 @@ ISR(RFM12_INT_VECT)
 		//first we read the first byte of the status register
 		//to get the interrupt flags
 		status = rfm12_read_int_flags_inline();
-#if 0
-		if (debug == 0) {
-			printf("<%02x>", status);
-			debug++;
-		}
-#endif
-#if 0
-		printf("<%02x>", status);
-#endif
 
 		//if we use at least one of the status bits, we need to check the status again
 		//for the case in which another interrupt condition occured while we were handeling
@@ -376,7 +362,6 @@ ISR(RFM12_INT_VECT)
 		}
 	} while (recheck_interrupt);
 
-	//RFM12_INT_FLAG = (1<<RFM12_FLAG_BIT);
 	//turn the int back on
 	RFM12_INT_ON();
 }
@@ -459,7 +444,7 @@ static const uint16_t init_cmds[] = {
 * \note Please note that the transmit power and receive amplification values are currently hard coded.
 * Have a look into rfm12_hw.h for possible settings.
 */
-void rfm12_init(void) {
+void phy_init(void) {
 	//initialize spi
 #ifdef __PLATFORM_AVR__
 	SS_RELEASE();
