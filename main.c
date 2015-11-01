@@ -28,7 +28,7 @@ void dll_data_handler(const uint8_t data)
 	if (isprint(data))
 		putchar(data);
 	else
-		printf_P(PSTR("<%02x>"), data);
+		putchar('#');
 	if (data == 0xce) {	// End of data
 		phy_receive();
 		putchar('\n');
@@ -39,12 +39,12 @@ void dll_data_handler(const uint8_t data)
 uint8_t dll_data_request(uint8_t *buffer)
 {
 	static char string[] = "\xecHello, \xaaworld!\xce";
-	static char *ptr = string;
-	if (ptr == string + sizeof(string)) {
-		ptr = string;
+	static uint8_t offset = 0;
+	if (offset == sizeof(string)) {
+		offset = 0;
 		return 0;
 	} else {
-		*buffer = *ptr++;
+		*buffer = *(string + offset++);
 		return 1;
 	}
 }
@@ -68,7 +68,7 @@ void init()
 int main()
 {
 	init();
-	puts_P(PSTR("\e[96mInitialised, hello world!"));
+	puts_P(PSTR("\x0c\e[96mInitialised, hello world!"));
 
 	uint16_t count = 0;
 poll:
@@ -77,7 +77,7 @@ poll:
 		while (!phy_free())
 			_delay_ms(1);
 		phy_transmit();
-		_delay_ms(100);
+		_delay_ms(50);
 	}
 	goto poll;
 	return 1;
