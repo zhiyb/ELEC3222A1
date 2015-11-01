@@ -6,8 +6,6 @@
 #include <stdio.h>
 #include <ctype.h>
 #include <uart0.h>
-#include <rfm12_config.h>
-#include <rfm12.h>
 #include "phy_layer.h"
 #include "dll_layer.h"
 
@@ -61,7 +59,7 @@ void init()
 	stdout = uart0_fd();
 	stdin = uart0_fd();
 
-	rfm12_init();
+	phy_init();
 	sei();
 }
 
@@ -73,7 +71,7 @@ int main()
 	uint16_t count = 0;
 poll:
 	if (!(PINC & _BV(2))) {
-		printf_P(PSTR("\e[91m%d: %d\n"), count++, ctrl.mode);
+		printf_P(PSTR("\e[91m%d: %d\n"), count++, phy_mode());
 		while (!phy_free())
 			_delay_ms(1);
 		phy_transmit();
