@@ -7,7 +7,10 @@ extern "C" {
 
 // Actual physical layer responsible for hardware operation
 
-// To be accessed by upper DLL layer
+// Initialisation
+void phy_init();
+
+// Interface with upper DLL layer
 
 enum PHYModes {PHYRX = 0, PHYTX};
 

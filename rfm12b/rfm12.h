@@ -90,6 +90,7 @@ extern struct rfm12_rx_buffer_t rx;
 */
 
 //see rfm12.c for more documentation
+#if 0
 #if (RFM12_USE_POLLING)
 void rfm12_poll(void)
 #endif
@@ -99,6 +100,7 @@ void rfm12_tick(void);
 void rfm12_send(uint8_t length, char *buffer);
 uint8_t rfm12_recv(uint8_t length, char *buffer);
 static inline uint8_t rfm12_available() {return (rx.write - rx.read) & RFM12_RX_BUFFER_MASK;}
+#endif
 #endif
 
 /************************
