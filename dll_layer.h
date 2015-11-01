@@ -7,21 +7,22 @@
 extern "C" {
 #endif
 
-// Data link layer: unreliable, but in unit of packet
+// Data link layer: unreliable, in order, in unit of NET packets
 
-// To be accessed by upper NET layer
+// Initialisation
+void dll_init();
 
+// Interface with upper NET layer
+
+// Maximum packet length is defined by NET_PACKET_MAX_SIZE
 // Send out a packet
 void dll_send(uint8_t *data, uint8_t length);
 // Whether packets received
 void dll_available();
-// Take 1 packet, return the actual size
+// Take 1 packet, return the actual packet size
 uint8_t dll_read(uint8_t *data);
 
-// To be accessed by lower PHY layer
-
-// Sync byte required by PHY for performance reason
-static inline uint8_t dll_sync_byte() {return 0xaa;}
+// Interface with lower PHY layer
 
 // Receive data stream from PHY, called from ISR
 void dll_data_handler(const uint8_t data);
