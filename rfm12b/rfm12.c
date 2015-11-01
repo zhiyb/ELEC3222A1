@@ -113,7 +113,7 @@ void phy_transmit()
 	rfm12_data(RFM12_CMD_PWRMGT | PWRMGT_DEFAULT ); /* disable receiver */
 #if 1
 	rfm12_data(RFM12_CMD_TX | 0x2d);
-	rfm12_data(RFM12_CMD_TX | 0xaa);	// The sync bytes
+	rfm12_data(RFM12_CMD_TX | 0xa4);	// The sync bytes
 #else
 	rfm12_data(RFM12_CMD_TX | data);
 	if (dll_data_request(&data))
@@ -133,7 +133,6 @@ void phy_receive()
 		//load a dummy byte to clear int status
 		rfm12_data( RFM12_CMD_TX | 0x00);
 		ctrl.mode = PHYRX;
-
 	}
 	// Reset the receiver fifo
 	rfm12_data( RFM12_CMD_FIFORESET | CLEAR_FIFO_INLINE);
@@ -143,6 +142,8 @@ void phy_receive()
 
 uint8_t phy_free()
 {
+	if (ctrl.mode != PHYRX)
+		return 0;
 	//disable the interrupt (as we're working directly with the transceiver now)
 	//hint: we could be losing an interrupt here, because we read the status register.
 	//this applys for the Wakeup timer, as it's flag is reset by reading.
@@ -417,11 +418,11 @@ static const uint16_t init_cmds[] = {
 	RFM12_CMD_RXCTRL_DEFAULT,
 
 	//automatic clock lock control(AL), digital Filter(!S),
-	//Data quality detector value 3, slow clock recovery lock
-	(RFM12_CMD_DATAFILTER | RFM12_DATAFILTER_AL /*| RFM12_DATAFILTER_ML*/ | 3),
+	//Data quality detector value 3, fast clock recovery lock
+	(RFM12_CMD_DATAFILTER | RFM12_DATAFILTER_AL | RFM12_DATAFILTER_ML | 3),
 
-	//1 Byte Sync Pattern, Pattern fill fifo,
-	//disable sensitive reset, Fifo filled interrupt at 1 byte
+	//2 Byte Sync Pattern, Pattern fill fifo,
+	//disable sensitive reset, Fifo filled interrupt at 8 bytes
 	(RFM12_CMD_FIFORESET | CLEAR_FIFO_INLINE),
 
 	//defined above (so shadow register is inited with same value)
@@ -505,8 +506,10 @@ void rfm12_init(void) {
 			rfm12_data(init_cmds[x]);
 	#endif
 
+#if 1
 	//Sync pattern
-	rfm12_data(RFM12_CMD_SYNCPATTERN | dll_sync_byte()),
+	rfm12_data(RFM12_CMD_SYNCPATTERN | 0xa4);
+#endif
 
 	#ifdef RX_ENTER_HOOK
 		RX_ENTER_HOOK;
