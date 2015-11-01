@@ -43,7 +43,8 @@
 
 #include <string.h>
 
-#include <mac_layer.h>
+#include <phy_layer.h>
+#include <dll_layer.h>
 
 #include "rfm12_config.h"
 
@@ -61,8 +62,10 @@
 
 //! Buffer and status for packet transmission.
 struct rfm12_ctrl_t ctrl;
+#if 0
 struct rfm12_tx_buffer_t tx;
 struct rfm12_rx_buffer_t rx;
+#endif
 
 /************************
  * load other core and external components
@@ -90,6 +93,59 @@ struct rfm12_rx_buffer_t rx;
  * Begin of library
 */
 
+uint8_t phy_mode()
+{
+	return ctrl.mode;
+}
+
+void phy_transmit()
+{
+	if (ctrl.mode == PHYTX)
+		return;
+	uint8_t data;
+	if (!dll_data_request(&data))
+		return;
+	// Initialise transmission
+	RFM12_INT_OFF();
+	ctrl.mode = PHYTX;
+	rfm12_data(RFM12_CMD_PWRMGT | PWRMGT_DEFAULT ); /* disable receiver */
+	rfm12_data(RFM12_CMD_TX | data);
+	if (dll_data_request(&data))
+		rfm12_data(RFM12_CMD_TX | data);
+	rfm12_data(RFM12_CMD_PWRMGT | PWRMGT_DEFAULT | RFM12_PWRMGT_ET);
+	RFM12_INT_FLAG = (1<<RFM12_FLAG_BIT);
+	RFM12_INT_ON();
+}
+
+void phy_receive()
+{
+	if (ctrl.mode == PHYTX) {
+		//turn off the transmitter and enable receiver
+		//the receiver is not enabled in transmit only mode (by PWRMGT_RECEIVE macro)
+		rfm12_data( PWRMGT_RECEIVE );
+		//load a dummy byte to clear int status
+		rfm12_data( RFM12_CMD_TX | 0xaa);
+		ctrl.mode = PHYRX;
+
+	}
+	// Reset the receiver fifo
+	rfm12_data( RFM12_CMD_FIFORESET | CLEAR_FIFO_INLINE);
+	rfm12_data( RFM12_CMD_FIFORESET | ACCEPT_DATA_INLINE);
+
+}
+
+uint8_t phy_free()
+{
+	//disable the interrupt (as we're working directly with the transceiver now)
+	//hint: we could be losing an interrupt here, because we read the status register.
+	//this applys for the Wakeup timer, as it's flag is reset by reading.
+	RFM12_INT_OFF();
+	uint16_t status = rfm12_read(RFM12_CMD_STATUS);
+	RFM12_INT_ON();
+	return !(status & RFM12_STATUS_RSSI);
+}
+
+#if 0
 static inline uint8_t tx_end()
 {
 	return tx.read == tx.write;
@@ -166,6 +222,7 @@ uint8_t rfm12_recv(uint8_t length, char *buffer)
 	rx.read = (read + length) & RFM12_RX_BUFFER_MASK;
 	return len;
 }
+#endif
 
 //! Interrupt handler to handle all transmit and receive data transfers to the rfm12.
 /** The receiver will generate an interrupt request (IT) for the
@@ -266,7 +323,10 @@ ISR(RFM12_INT_VECT)
 			recheck_interrupt = 1;
 			//see what we have to do (start rx, rx or tx)
 			switch (ctrl.mode) {
-			case RX:	// Receiving
+			case PHYRX:	// Receiving
+#if 1
+				dll_data_handler(rfm12_read(RFM12_CMD_READ));
+#else
 #if 1
 				{
 					char c = rfm12_read(RFM12_CMD_READ);
@@ -277,39 +337,34 @@ ISR(RFM12_INT_VECT)
 #else
 				rx_push(rfm12_read(RFM12_CMD_READ));
 #endif
+#endif
 				continue;
 			default:	// Transmitting
+#if 1
+				{
+					uint8_t data;
+					if (dll_data_request(&data)) {
+						rfm12_data(RFM12_CMD_TX | data);
+#if 0
+						if (status & (RFM12_STATUS_RGUR >> 8)) {
+							if (!dll_data_request(&data))
+								continue;
+							rfm12_data(RFM12_CMD_TX | data);
+						}
+#endif
+						continue;
+					}
+				}
+#else
 				if (!tx_end()) {
 					rfm12_data(RFM12_CMD_TX | tx_pop());
 					if (status & (RFM12_STATUS_RGUR >> 8) && !tx_end())
 						rfm12_data(RFM12_CMD_TX | tx_pop());
 					continue;
 				}
-				//Transmitter on RFM12BP off
-				#ifdef TX_LEAVE_HOOK
-					TX_LEAVE_HOOK;
-				#endif
-
-				//turn off the transmitter and enable receiver
-				//the receiver is not enabled in transmit only mode (by PWRMGT_RECEIVE macro)
-				rfm12_data( PWRMGT_RECEIVE );
-
-				//Receiver on RFM12BP on
-				#ifdef RX_ENTER_HOOK
-					RX_ENTER_HOOK;
-				#endif
-
-				ctrl.mode = RX;
-
-				//load a dummy byte to clear int status
-				rfm12_data( RFM12_CMD_TX | 0xaa);
+#endif
 			}
-
-			//reset the receiver fifo, if receive mode is not disabled (default)
-			#if !(RFM12_TRANSMIT_ONLY)
-				rfm12_data( RFM12_CMD_FIFORESET | CLEAR_FIFO_INLINE);
-				rfm12_data( RFM12_CMD_FIFORESET | ACCEPT_DATA_INLINE);
-			#endif /* !(RFM12_TRANSMIT_ONLY) */
+			phy_receive();
 		}
 	} while (recheck_interrupt);
 
@@ -415,11 +470,13 @@ void rfm12_init(void) {
 #endif
 
 	// Initialise control structure
-	ctrl.mode = RX;
+	ctrl.mode = PHYRX;
+#if 0
 	rx.write = 0;
 	rx.read = 0;
 	tx.write = 0;
 	tx.read = 0;
+#endif
 
 	//typically sets DDR registers for RFM12BP TX/RX pin
 	#ifdef TX_INIT_HOOK
@@ -442,7 +499,7 @@ void rfm12_init(void) {
 	#endif
 
 	//Sync pattern
-	rfm12_data(RFM12_CMD_SYNCPATTERN | mac_sync_byte()),
+	rfm12_data(RFM12_CMD_SYNCPATTERN | dll_sync_byte()),
 
 	#ifdef RX_ENTER_HOOK
 		RX_ENTER_HOOK;
