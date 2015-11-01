@@ -1,13 +1,25 @@
 #ifndef PHY_LAYER_H
 #define PHY_LAYER_H
 
-// If transceiver is ready to transmit (channel free)
-uint8_t phy_ready();
-// Push data into TX buffer
-void phy_send(uint8_t length, char *buffer);
-// For unblocking operation, check if data available for receive
-uint8_t phy_available();
-// Pull data from RX buffer
-uint8_t phy_recv(uint8_t length, char *buffer);
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+// Actual physical layer responsible for hardware operation
+
+// To be accessed by upper DLL layer
+
+enum PHYModes {PHYRX = 0, PHYTX};
+
+// Returns current hardware mode (enum PHYModes)
+uint8_t phy_mode();
+// Whether channel is free
+void phy_free();
+// Start transmission
+void phy_transmit();
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif
