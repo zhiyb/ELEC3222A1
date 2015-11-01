@@ -289,7 +289,7 @@
 /*
  * the following macros help to manage the rfm12 fifo
  * default fiforeset is as follows:
- * 2 Bytes Sync Pattern, disable sensitive reset, fifo filled interrupt at 8 bits
+ * 2 Bytes Sync Pattern, disable sensitive reset, fifo filled interrupt at 8 bytes
  */
 #define FIFO_SETTINGS	(/*RFM12_FIFORESET_SP |*/ RFM12_FIFORESET_DR | (8 << 4))
 //default fiforeset register value to accept data

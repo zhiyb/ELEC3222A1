@@ -133,15 +133,10 @@ static inline void spi_init(void) {
 	DDR_MISO &= ~(_BV(BIT_MISO));
 
 	#if !(RFM12_SPI_SOFTWARE)
-		// F_OSC / 2
-#if 0
-		SPCR = _BV(SPE) | _BV(MSTR);
-		SPSR = _BV(SPI2X);
-#else
-		//SPI Master, clk/8
+		//SPI Master, clk/16
+		//Required for reliable 115200bps datarate
 		SPCR = (1<<SPE) | (1<<MSTR) | (1<<SPR0);
-		SPSR = _BV(SPI2X);
-#endif
+		//SPSR = _BV(SPI2X);
 	#endif
 }
 
