@@ -102,16 +102,23 @@ void phy_transmit()
 {
 	if (ctrl.mode == PHYTX)
 		return;
+#if 0
 	uint8_t data;
 	if (!dll_data_request(&data))
 		return;
+#endif
 	// Initialise transmission
 	RFM12_INT_OFF();
 	ctrl.mode = PHYTX;
 	rfm12_data(RFM12_CMD_PWRMGT | PWRMGT_DEFAULT ); /* disable receiver */
+#if 1
+	rfm12_data(RFM12_CMD_TX | 0x2d);
+	rfm12_data(RFM12_CMD_TX | 0xaa);	// The sync bytes
+#else
 	rfm12_data(RFM12_CMD_TX | data);
 	if (dll_data_request(&data))
 		rfm12_data(RFM12_CMD_TX | data);
+#endif
 	rfm12_data(RFM12_CMD_PWRMGT | PWRMGT_DEFAULT | RFM12_PWRMGT_ET);
 	RFM12_INT_FLAG = (1<<RFM12_FLAG_BIT);
 	RFM12_INT_ON();
@@ -124,7 +131,7 @@ void phy_receive()
 		//the receiver is not enabled in transmit only mode (by PWRMGT_RECEIVE macro)
 		rfm12_data( PWRMGT_RECEIVE );
 		//load a dummy byte to clear int status
-		rfm12_data( RFM12_CMD_TX | 0xaa);
+		rfm12_data( RFM12_CMD_TX | 0x00);
 		ctrl.mode = PHYRX;
 
 	}
