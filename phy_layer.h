@@ -14,7 +14,7 @@ enum PHYModes {PHYRX = 0, PHYTX};
 // Returns current hardware mode (enum PHYModes)
 uint8_t phy_mode();
 // Whether channel is free
-void phy_free();
+uint8_t phy_free();
 // Start transmission
 void phy_transmit();
 // Reset receive mode (waiting for sync byte)
