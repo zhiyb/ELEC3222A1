@@ -5,10 +5,13 @@
 extern "C" {
 #endif
 
-void tran_send(uint8_t length, char *buffer);
+// For use by APP
+
+void tran_send(char *buffer, uint16_t length);
 // For unblocking operation, check if data available for receive
 uint8_t tran_available();
-uint8_t tran_recv(uint8_t length, char *buffer);
+// Return actual bytes read
+uint16_t tran_recv(char *buffer, uint16_t length);
 
 #ifdef __cplusplus
 }
