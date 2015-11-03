@@ -16,7 +16,7 @@ void dll_init();
 
 // Maximum packet length: NET_PACKET_MAX_SIZE (128 bytes)
 // Buffer a packet and start transmission
-void dll_write(uint8_t *packet, uint8_t length);
+void dll_write(const uint8_t *packet, uint8_t length);
 // Check if packets buffered ready for read
 uint8_t dll_available();
 // Take 1 packet from buffer, return the actual packet size read
