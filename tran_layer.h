@@ -19,8 +19,6 @@ void tran_init();
 // Data length limited only by (uint16_t)
 // Buffer data stream and start transmission
 void tran_write(const uint8_t *data, uint16_t length);
-// Check if data buffered available for read
-uint8_t tran_available();
 // Read <length> bytes of data, return the actual bytes read
 uint16_t tran_read(uint8_t *data, uint16_t length);
 
