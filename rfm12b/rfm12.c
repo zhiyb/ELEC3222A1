@@ -102,23 +102,13 @@ void phy_transmit()
 {
 	if (ctrl.mode == PHYTX)
 		return;
-#if 0
-	uint8_t data;
-	if (!dll_data_request(&data))
-		return;
-#endif
+
 	// Initialise transmission
 	RFM12_INT_OFF();
 	ctrl.mode = PHYTX;
 	rfm12_data(RFM12_CMD_PWRMGT | PWRMGT_DEFAULT ); /* disable receiver */
-#if 1
 	rfm12_data(RFM12_CMD_TX | 0x2d);
 	rfm12_data(RFM12_CMD_TX | 0xa4);	// The sync bytes
-#else
-	rfm12_data(RFM12_CMD_TX | data);
-	if (dll_data_request(&data))
-		rfm12_data(RFM12_CMD_TX | data);
-#endif
 	rfm12_data(RFM12_CMD_PWRMGT | PWRMGT_DEFAULT | RFM12_PWRMGT_ET);
 	RFM12_INT_FLAG = (1<<RFM12_FLAG_BIT);
 	RFM12_INT_ON();
@@ -153,85 +143,6 @@ uint8_t phy_free()
 	return !(status & RFM12_STATUS_RSSI);
 }
 
-#if 0
-static inline uint8_t tx_end()
-{
-	return tx.read == tx.write;
-}
-
-static inline uint8_t tx_pop()
-{
-	uint8_t read = tx.read;
-	uint8_t data = *(tx.buffer + read);
-	tx.read = (read + 1) & RFM12_TX_BUFFER_MASK;
-#if 0
-	char c = (char)data;
-	if (isprint(c))
-		putchar(c);
-#endif
-	return data;
-}
-
-static inline void rx_push(const uint8_t data)
-{
-	uint8_t write = rx.write, read = rx.read;
-	*(rx.buffer + write) = data;
-	rx.write = write = (write + 1) & RFM12_RX_BUFFER_MASK;
-	if (write == read)
-		rx.read = (read + 1) & RFM12_RX_BUFFER_MASK;
-}
-
-void rfm12_send(uint8_t length, char *buffer)
-{
-	if (length == 0)
-		return;
-	uint8_t write = tx.write, remain;
-	do
-		remain = (tx.read - write) & RFM12_TX_BUFFER_MASK;
-	while (length >= remain && remain != 0);
-	if (write > RFM12_TX_BUFFER_SIZE - length) {
-		// Remain bytes to end of buffer
-		uint8_t remain = RFM12_TX_BUFFER_SIZE - write;
-		memcpy(tx.buffer + write, buffer, remain);
-		memcpy(tx.buffer, buffer + remain, length - remain);
-		//write = length - len;
-	} else {
-		memcpy(tx.buffer + write, buffer, length);
-		//write += length;
-	}
-	tx.write = (write + length) & RFM12_TX_BUFFER_MASK;
-	if (ctrl.mode == TX)
-		return;
-	// Initialise transmission
-	RFM12_INT_OFF();
-	ctrl.mode = TX;
-	rfm12_data(RFM12_CMD_PWRMGT | PWRMGT_DEFAULT ); /* disable receiver */
-	rfm12_data(RFM12_CMD_TX | tx_pop());
-	rfm12_data(RFM12_CMD_PWRMGT | PWRMGT_DEFAULT | RFM12_PWRMGT_ET);
-	RFM12_INT_FLAG = (1<<RFM12_FLAG_BIT);
-	RFM12_INT_ON();
-}
-
-uint8_t rfm12_recv(uint8_t length, char *buffer)
-{
-	uint8_t len = rfm12_available();
-	if (len == 0)
-		return 0;
-	uint8_t read = rx.read;
-	length = length < len ? length : len;
-	if (read > RFM12_RX_BUFFER_SIZE - length) {
-		// Remain bytes to end of buffer
-		uint8_t remain = RFM12_RX_BUFFER_SIZE - read;
-		memcpy(buffer, rx.buffer + read, remain);
-		memcpy(buffer + remain, rx.buffer, length - remain);
-	} else {
-		memcpy(buffer, rx.buffer + read, length);
-	}
-	rx.read = (read + length) & RFM12_RX_BUFFER_MASK;
-	return len;
-}
-#endif
-
 //! Interrupt handler to handle all transmit and receive data transfers to the rfm12.
 /** The receiver will generate an interrupt request (IT) for the
 * microcontroller - by pulling the nIRQ pin low - on the following events:
@@ -260,7 +171,6 @@ ISR(RFM12_INT_VECT)
 	RFM12_INT_OFF();
 	uint8_t status;
 	uint8_t recheck_interrupt;
-	//uint8_t debug = 0;
 
 	do {
 #ifdef __PLATFORM_AVR__
@@ -318,28 +228,14 @@ ISR(RFM12_INT_VECT)
 			//see what we have to do (start rx, rx or tx)
 			switch (ctrl.mode) {
 			case PHYRX:	// Receiving
-#if 1
 				dll_data_handler(rfm12_read(RFM12_CMD_READ));
-#else
-#if 1
-				{
-					char c = rfm12_read(RFM12_CMD_READ);
-					if (isprint(c))
-						putchar(c);
-					rx_push(c);
-				}
-#else
-				rx_push(rfm12_read(RFM12_CMD_READ));
-#endif
-#endif
 				continue;
 			default:	// Transmitting
-#if 1
 				{
 					uint8_t data;
 					if (dll_data_request(&data)) {
 						rfm12_data(RFM12_CMD_TX | data);
-#if 0
+#if 1
 						if (status & (RFM12_STATUS_RGUR >> 8)) {
 							if (!dll_data_request(&data))
 								continue;
@@ -349,14 +245,6 @@ ISR(RFM12_INT_VECT)
 						continue;
 					}
 				}
-#else
-				if (!tx_end()) {
-					rfm12_data(RFM12_CMD_TX | tx_pop());
-					if (status & (RFM12_STATUS_RGUR >> 8) && !tx_end())
-						rfm12_data(RFM12_CMD_TX | tx_pop());
-					continue;
-				}
-#endif
 			}
 			phy_receive();
 		}
@@ -464,12 +352,6 @@ void phy_init(void) {
 
 	// Initialise control structure
 	ctrl.mode = PHYRX;
-#if 0
-	rx.write = 0;
-	rx.read = 0;
-	tx.write = 0;
-	tx.read = 0;
-#endif
 
 	//typically sets DDR registers for RFM12BP TX/RX pin
 	#ifdef TX_INIT_HOOK
