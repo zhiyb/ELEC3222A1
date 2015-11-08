@@ -9,6 +9,8 @@
 #include "phy_layer.h"
 #include "dll_layer.h"
 
+volatile uint8_t transmit = 0;
+
 void dll_data_handler(const uint8_t data)
 {
 	static uint8_t first = 1;
@@ -36,10 +38,13 @@ void dll_data_handler(const uint8_t data)
 
 uint8_t dll_data_request(uint8_t *buffer)
 {
+	if (!transmit)
+		return 0;
 	static char string[] = "\xecHello, \xaaworld!\xce";
 	static uint8_t offset = 0;
 	if (offset == sizeof(string)) {
 		offset = 0;
+		transmit = 0;
 		return 0;
 	} else {
 		*buffer = *(string + offset++);
@@ -74,6 +79,7 @@ poll:
 		printf_P(PSTR("\e[91m%d: %d\n"), count++, phy_mode());
 		while (!phy_free())
 			_delay_ms(1);
+		transmit = 1;
 		phy_transmit();
 		_delay_ms(50);
 	}
