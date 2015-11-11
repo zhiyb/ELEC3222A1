@@ -3,6 +3,11 @@
 
 #include <stdint.h>
 
+// RTOS
+#include <FreeRTOSConfig.h>
+#include <FreeRTOS.h>
+#include <queue.h>
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -22,13 +27,6 @@ uint8_t dll_written();
 // Take 1 packet from buffer, return the actual packet size read
 // Return 0 means no packet available
 uint8_t dll_read(uint8_t *packet);
-
-// Interface with lower PHY layer
-
-// Receive data stream from PHY, called from ISR
-void dll_data_handler(const uint8_t data);
-// Transmit data stream request from PHY, called from ISR
-uint8_t dll_data_request(uint8_t *buffer);
 
 #ifdef __cplusplus
 }
