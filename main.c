@@ -9,47 +9,37 @@
 #include "phy_layer.h"
 #include "dll_layer.h"
 
-volatile uint8_t transmit = 0;
+#include "FreeRTOSConfig.h"
+#include <FreeRTOS.h>
+#include <task.h>
+#include <queue.h>
 
-void dll_data_handler(const uint8_t data)
+void testRX(void *param)
 {
-	static uint8_t first = 1;
-	if (PINC & _BV(5)) {
-		if (data == 0xce) {	// End of data
-			phy_receive();
-			first = 1;
-		}
-		return;
-	}
-	if (first) {
-		fputs_P(PSTR("\e[92m"), stdout);
-		first = 0;
-	}
+	uint8_t data;
+loop:
+	while (xQueueReceive(phy_rx, &data, portMAX_DELAY) != pdTRUE);
 	if (isprint(data))
 		putchar(data);
 	else
-		putchar('#');
+		printf("\\x%02x", data);
 	if (data == 0xce) {	// End of data
 		phy_receive();
 		putchar('\n');
-		first = 1;
 	}
+	goto loop;
 }
 
-uint8_t dll_data_request(uint8_t *buffer)
+void testTX(void *param)
 {
-	if (!transmit)
-		return 0;
-	static char string[] = "\xecHello, \xaaworld!\xce";
-	static uint8_t offset = 0;
-	if (offset == sizeof(string)) {
-		offset = 0;
-		transmit = 0;
-		return 0;
-	} else {
-		*buffer = *(string + offset++);
-		return 1;
-	}
+	static char string[] = "\xecHello, \xaaworld! PHY test string, very long? 0123456789 ABCDEFGHIJKLMNOPQRSTUVWXYZ abcdefghijklmnopqrstuvwxyz\xce";
+	char *ptr;
+loop:
+	vTaskDelay(configTICK_RATE_HZ / 5);
+	puts_P(PSTR("\e[91mSending...\e[92m"));
+	for (ptr = string; *ptr != '\0'; ptr++)
+		xQueueSendToBack(phy_tx, ptr, portMAX_DELAY);
+	goto loop;
 }
 
 void init()
@@ -73,16 +63,9 @@ int main()
 	init();
 	puts_P(PSTR("\x0c\e[96mInitialised, hello world!"));
 
-	uint16_t count = 0;
-poll:
-	if (!(PINC & _BV(2))) {
-		printf_P(PSTR("\e[91m%d: %d\n"), count++, phy_mode());
-		while (!phy_free())
-			_delay_ms(1);
-		transmit = 1;
-		phy_transmit();
-		_delay_ms(50);
-	}
-	goto poll;
+	xTaskCreate(testRX, "Test RX", 160, NULL, tskAPP_PRIORITY, NULL);
+	xTaskCreate(testTX, "Test TX", configMINIMAL_STACK_SIZE, NULL, tskAPP_PRIORITY, NULL);
+	puts_P(PSTR("\e[96mTasks created, start scheduler."));
+	vTaskStartScheduler();
 	return 1;
 }
