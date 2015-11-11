@@ -1,6 +1,7 @@
 # Yubo Zhi (normanzyb@gmail.com)
 
 TRG	= elec3222a1
+SUBDIRS	+= FreeRTOS
 
 PRGER		= usbasp
 MCU_TARGET	= atmega644p
