@@ -100,7 +100,10 @@
 #define RFM12_XTAL_LOAD       RFM12_XTAL_11_5PF
 
 //use this for datarates >= 2700 Baud
-#define DATARATE_VALUE        RFM12_DATARATE_CALC_HIGH(114900.0)
+//#define DATARATE_VALUE        RFM12_DATARATE_CALC_HIGH(114900.0)
+#define DATARATE_VALUE        RFM12_DATARATE_CALC_HIGH(69000.0)
+// Data quality detector, minimum 4, maximum 7
+#define DATAFILTER_DQD		6
 
 //use this for 340 Baud < datarate < 2700 Baud
 //#define DATARATE_VALUE      RFM12_DATARATE_CALC_LOW(1200.0)
