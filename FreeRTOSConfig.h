@@ -113,5 +113,8 @@ to exclude the API function. */
 #define INCLUDE_vTaskDelayUntil			1
 #define INCLUDE_vTaskDelay				1
 
+#define tskAPP_PRIORITY		(tskIDLE_PRIORITY + 1)
+#define tskPROT_PRIORITY	(tskIDLE_PRIORITY + 2)
+#define tskINT_PRIORITY		(tskIDLE_PRIORITY + 3)
 
 #endif /* FREERTOS_CONFIG_H */

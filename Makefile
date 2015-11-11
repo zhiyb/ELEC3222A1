@@ -2,6 +2,7 @@
 
 TRG	= elec3222a1
 SUBDIRS	+= FreeRTOS
+INCDIRS	+= .
 
 PRGER		= usbasp
 MCU_TARGET	= atmega644p
