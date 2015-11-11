@@ -48,6 +48,8 @@
 
 #include "rfm12_config.h"
 
+#include <task.h>
+
 /************************
  * library internal includes
  * the order in which they are included is important
@@ -60,8 +62,10 @@
  * library internal globals
 */
 
-//! Buffer and status for packet transmission.
+// Buffer and status for packet transmission.
 struct rfm12_ctrl_t ctrl;
+// RTOS queue for waiting for PHY mode change
+QueueHandle_t rfm_mode;
 
 /************************
  * load other core and external components
@@ -116,6 +120,7 @@ void phy_receive()
 {
 	if (ctrl.mode == PHYTX) {
 		return;
+		cli();
 		//turn off the transmitter and enable receiver
 		//the receiver is not enabled in transmit only mode (by PWRMGT_RECEIVE macro)
 		rfm12_data( PWRMGT_RECEIVE );
@@ -123,9 +128,11 @@ void phy_receive()
 		rfm12_data( RFM12_CMD_TX | 0x00);
 		ctrl.mode = PHYRX;
 	}
+	cli();
 	// Reset the receiver fifo
 	rfm12_data( RFM12_CMD_FIFORESET | CLEAR_FIFO_INLINE);
 	rfm12_data( RFM12_CMD_FIFORESET | ACCEPT_DATA_INLINE);
+	sei();
 
 }
 
@@ -137,11 +144,22 @@ uint8_t phy_free()
 	//hint: we could be losing an interrupt here, because we read the status register.
 	//this applys for the Wakeup timer, as it's flag is reset by reading.
 	cli();
-	//RFM12_INT_OFF();
 	uint16_t status = rfm12_read(RFM12_CMD_STATUS);
-	//RFM12_INT_ON();
 	sei();
 	return !(status & RFM12_STATUS_RSSI);
+}
+
+void rfm12_tx(void *param)
+{
+	uint8_t data;
+loop:
+	// Wait for item available to transmit
+	while (xQueuePeek(phy_tx, &data, portMAX_DELAY) != pdTRUE);
+	// Put rfm12b to TX mode
+	phy_transmit();
+	// Wait for transmit complete (return to RX mode)
+	while (xQueueReceive(rfm_mode, &data, portMAX_DELAY) != pdTRUE || data != PHYRX);
+	goto loop;
 }
 
 //! Interrupt handler to handle all transmit and receive data transfers to the rfm12.
@@ -166,13 +184,12 @@ uint8_t phy_free()
 */
 
 #include <stdio.h>
-//ISR(RFM12_INT_VECT, ISR_NOBLOCK)
 ISR(RFM12_INT_VECT)
 {
-	RFM12_INT_OFF();
 	uint8_t status;
 	uint8_t recheck_interrupt;
 	static uint8_t padded = 0;
+	BaseType_t xTaskWoken = pdFALSE;
 
 	do {
 #ifdef __PLATFORM_AVR__
@@ -231,7 +248,11 @@ ISR(RFM12_INT_VECT)
 			switch (ctrl.mode) {
 			case PHYRX:	// Receiving
 #if 1
-				dll_data_handler(rfm12_read(RFM12_CMD_READ));
+				{
+					//putchar('.');
+					uint8_t data = rfm12_read(RFM12_CMD_READ);
+					xQueueSendToBackFromISR(phy_rx, &data, &xTaskWoken);
+				}
 #else
 				{
 					uint8_t data = rfm12_read(RFM12_CMD_READ);
@@ -246,9 +267,8 @@ ISR(RFM12_INT_VECT)
 			default:	// Transmitting
 				{
 					uint8_t data;
-					if (dll_data_request(&data)) {
+					if (xQueueReceiveFromISR(phy_tx, &data, &xTaskWoken) == pdTRUE) {
 						rfm12_data(RFM12_CMD_TX | data);
-						padded = 0;
 #if 0
 						if (isprint(data))
 							putchar(data);
@@ -269,19 +289,21 @@ ISR(RFM12_INT_VECT)
 					} else {
 						//turn off the transmitter and enable receiver
 						//the receiver is not enabled in transmit only mode (by PWRMGT_RECEIVE macro)
-						rfm12_data( PWRMGT_RECEIVE );
+						rfm12_data(PWRMGT_RECEIVE);
 						//load a dummy byte to clear int status
 						//rfm12_data( RFM12_CMD_TX | 0x00);
-						ctrl.mode = PHYRX;
+						ctrl.mode = data = PHYRX;
 						phy_receive();
+						padded = 0;
+						xQueueSendToBackFromISR(rfm_mode, &data, &xTaskWoken);
 					}
 				}
 			}
 		}
 	} while (recheck_interrupt);
 
-	//turn the int back on
-	RFM12_INT_ON();
+	if (xTaskWoken)
+		taskYIELD();
 }
 
 //enable internal data register and fifo
@@ -322,7 +344,7 @@ static const uint16_t init_cmds[] = {
 
 	//automatic clock lock control(AL), digital Filter(!S),
 	//Data quality detector value 5, fast clock recovery lock
-	(RFM12_CMD_DATAFILTER | RFM12_DATAFILTER_AL | RFM12_DATAFILTER_ML | 5),
+	(RFM12_CMD_DATAFILTER | RFM12_DATAFILTER_AL | RFM12_DATAFILTER_ML | DATAFILTER_DQD),
 
 	//2 Byte Sync Pattern, Pattern fill fifo,
 	//disable sensitive reset, Fifo filled interrupt at 8 bytes
@@ -384,6 +406,14 @@ void phy_init(void) {
 	// Initialise control structure
 	ctrl.mode = PHYRX;
 
+	// Initialise RTOS queue
+	phy_rx = xQueueCreate(16, 1);
+	phy_tx = xQueueCreate(16, 1);
+	rfm_mode = xQueueCreate(1, 1);
+	while (phy_rx == 0 || phy_tx == 0 || rfm_mode == 0);
+
+	xTaskCreate(rfm12_tx, "RFM12 TX", configMINIMAL_STACK_SIZE, NULL, tskINT_PRIORITY, NULL);
+
 	//write all the initialisation values to rfm12
 	uint8_t x;
 
@@ -426,5 +456,31 @@ void phy_init(void) {
 	rfm12_data(ACCEPT_DATA);
 
 	//activate the interrupt
+	RFM12_INT_ON();
+}
+
+void phy_disable()
+{
+	RFM12_INT_OFF();
+	rfm12_data(RFM12_CMD_PWRMGT | PWRMGT_DEFAULT ); /* disable receiver */
+	// Reset the receiver fifo
+	rfm12_data( RFM12_CMD_FIFORESET | CLEAR_FIFO_INLINE);
+	rfm12_data( RFM12_CMD_FIFORESET | ACCEPT_DATA_INLINE);
+	// Initialise control structure
+	ctrl.mode = PHYRX;
+	xQueueReset(phy_tx);
+	xQueueReset(phy_rx);
+	RFM12_INT_FLAG = (1<<RFM12_FLAG_BIT);
+}
+
+void phy_enable()
+{
+	if (ctrl.mode == PHYTX)
+		return;
+	xQueueReset(phy_tx);
+	xQueueReset(phy_rx);
+	RFM12_INT_FLAG = (1<<RFM12_FLAG_BIT);
+	// Reset use phy_receive()
+	phy_receive();
 	RFM12_INT_ON();
 }
