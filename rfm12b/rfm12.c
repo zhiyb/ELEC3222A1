@@ -62,10 +62,6 @@
 
 //! Buffer and status for packet transmission.
 struct rfm12_ctrl_t ctrl;
-#if 0
-struct rfm12_tx_buffer_t tx;
-struct rfm12_rx_buffer_t rx;
-#endif
 
 /************************
  * load other core and external components
@@ -104,19 +100,22 @@ void phy_transmit()
 		return;
 
 	// Initialise transmission
-	RFM12_INT_OFF();
+	cli();
+	//RFM12_INT_OFF();
 	ctrl.mode = PHYTX;
 	rfm12_data(RFM12_CMD_PWRMGT | PWRMGT_DEFAULT ); /* disable receiver */
 	rfm12_data(RFM12_CMD_TX | 0x2d);
 	rfm12_data(RFM12_CMD_TX | 0xa4);	// The sync bytes
 	rfm12_data(RFM12_CMD_PWRMGT | PWRMGT_DEFAULT | RFM12_PWRMGT_ET);
-	RFM12_INT_FLAG = (1<<RFM12_FLAG_BIT);
-	RFM12_INT_ON();
+	//RFM12_INT_FLAG = (1<<RFM12_FLAG_BIT);
+	//RFM12_INT_ON();
+	sei();
 }
 
 void phy_receive()
 {
 	if (ctrl.mode == PHYTX) {
+		return;
 		//turn off the transmitter and enable receiver
 		//the receiver is not enabled in transmit only mode (by PWRMGT_RECEIVE macro)
 		rfm12_data( PWRMGT_RECEIVE );
@@ -137,9 +136,11 @@ uint8_t phy_free()
 	//disable the interrupt (as we're working directly with the transceiver now)
 	//hint: we could be losing an interrupt here, because we read the status register.
 	//this applys for the Wakeup timer, as it's flag is reset by reading.
-	RFM12_INT_OFF();
+	cli();
+	//RFM12_INT_OFF();
 	uint16_t status = rfm12_read(RFM12_CMD_STATUS);
-	RFM12_INT_ON();
+	//RFM12_INT_ON();
+	sei();
 	return !(status & RFM12_STATUS_RSSI);
 }
 
@@ -171,6 +172,7 @@ ISR(RFM12_INT_VECT)
 	RFM12_INT_OFF();
 	uint8_t status;
 	uint8_t recheck_interrupt;
+	static uint8_t padded = 0;
 
 	do {
 #ifdef __PLATFORM_AVR__
@@ -228,25 +230,53 @@ ISR(RFM12_INT_VECT)
 			//see what we have to do (start rx, rx or tx)
 			switch (ctrl.mode) {
 			case PHYRX:	// Receiving
+#if 1
 				dll_data_handler(rfm12_read(RFM12_CMD_READ));
-				continue;
+#else
+				{
+					uint8_t data = rfm12_read(RFM12_CMD_READ);
+					if (isprint(data))
+						putchar(data);
+					else
+						printf("\\x%02x", data);
+					dll_data_handler(data);
+				}
+#endif
+				break;
 			default:	// Transmitting
 				{
 					uint8_t data;
 					if (dll_data_request(&data)) {
 						rfm12_data(RFM12_CMD_TX | data);
-#if 1
+						padded = 0;
+#if 0
+						if (isprint(data))
+							putchar(data);
+						else
+							printf("\\x%02x", data);
+#endif
+#if 0
 						if (status & (RFM12_STATUS_RGUR >> 8)) {
 							if (!dll_data_request(&data))
 								continue;
 							rfm12_data(RFM12_CMD_TX | data);
 						}
 #endif
-						continue;
+					} else if (!padded) {
+						// Dummy byte ensure the last byte is transmitted
+						rfm12_data(RFM12_CMD_TX | 0xff);
+						padded = 1;
+					} else {
+						//turn off the transmitter and enable receiver
+						//the receiver is not enabled in transmit only mode (by PWRMGT_RECEIVE macro)
+						rfm12_data( PWRMGT_RECEIVE );
+						//load a dummy byte to clear int status
+						//rfm12_data( RFM12_CMD_TX | 0x00);
+						ctrl.mode = PHYRX;
+						phy_receive();
 					}
 				}
 			}
-			phy_receive();
 		}
 	} while (recheck_interrupt);
 
@@ -291,8 +321,8 @@ static const uint16_t init_cmds[] = {
 	RFM12_CMD_RXCTRL_DEFAULT,
 
 	//automatic clock lock control(AL), digital Filter(!S),
-	//Data quality detector value 3, fast clock recovery lock
-	(RFM12_CMD_DATAFILTER | RFM12_DATAFILTER_AL | RFM12_DATAFILTER_ML | 3),
+	//Data quality detector value 5, fast clock recovery lock
+	(RFM12_CMD_DATAFILTER | RFM12_DATAFILTER_AL | RFM12_DATAFILTER_ML | 5),
 
 	//2 Byte Sync Pattern, Pattern fill fifo,
 	//disable sensitive reset, Fifo filled interrupt at 8 bytes
@@ -349,18 +379,10 @@ void phy_init(void) {
 	_delay_ms(100);
 #endif
 #endif
+	DDRA = 0xff;
 
 	// Initialise control structure
 	ctrl.mode = PHYRX;
-
-	//typically sets DDR registers for RFM12BP TX/RX pin
-	#ifdef TX_INIT_HOOK
-		TX_INIT_HOOK;
-	#endif
-
-	#ifdef RX_INIT_HOOK
-		RX_INIT_HOOK;
-	#endif
 
 	//write all the initialisation values to rfm12
 	uint8_t x;
@@ -377,10 +399,6 @@ void phy_init(void) {
 	//Sync pattern
 	rfm12_data(RFM12_CMD_SYNCPATTERN | 0xa4);
 #endif
-
-	#ifdef RX_ENTER_HOOK
-		RX_ENTER_HOOK;
-	#endif
 
 	#if RFM12_USE_CLOCK_OUTPUT || RFM12_LOW_BATT_DETECTOR
 		rfm12_data(RFM12_CMD_LBDMCD | RFM12_LBD_VOLTAGE | RFM12_CLOCK_OUT_FREQUENCY ); //set low battery detect, clock output
