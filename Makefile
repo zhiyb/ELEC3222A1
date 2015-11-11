@@ -1,6 +1,7 @@
 # Yubo Zhi (normanzyb@gmail.com)
 
 TRG	= elec3222a1
+SRC	+= socket.c
 SUBDIRS	+= FreeRTOS
 INCDIRS	+= .
 
