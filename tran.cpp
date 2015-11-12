@@ -47,7 +47,7 @@ redo:	if(sizeof(str) > DATA_SIZE)
 					pck.checksum += pck.length;
 					pck.checksum += pck.control[1];
 					pck.checksum += pck.control[2];
-					send_net(&pck);					
+					//send_net(&pck);					
 				}
 				else
 				{
@@ -64,7 +64,7 @@ redo:	if(sizeof(str) > DATA_SIZE)
 					pck.checksum += pck.length;
 					pck.checksum += pck.control[1];
 					pck.checksum += pck.control[2];
-					send_net(&pck);					
+					//send_net(&pck);					
 				}
 				pck.checksum = 0;
 			}	
@@ -90,7 +90,7 @@ redo:	if(sizeof(str) > DATA_SIZE)
 					pck.checksum += pck.length;
 					pck.checksum += pck.control[1];
 					pck.checksum += pck.control[2];
-					send_net(&pck);					
+					//send_net(&pck);					
 				}
 				else
 				{
@@ -107,7 +107,7 @@ redo:	if(sizeof(str) > DATA_SIZE)
 					pck.checksum += pck.length;
 					pck.checksum += pck.control[1];
 					pck.checksum += pck.control[2];
-					send_net(&pck);					
+					//send_net(&pck);					
 				}
 				pck.checksum = 0;
 			}				
@@ -132,7 +132,7 @@ redo:	if(sizeof(str) > DATA_SIZE)
 			pck.checksum += pck.length;
 			pck.checksum += pck.control[1];
 			pck.checksum += pck.control[2];
-			send_net(&pck);					
+			//send_net(&pck);					
 		}
 
 	}
