@@ -3,6 +3,11 @@
 
 #include <stdint.h>
 
+// RTOS
+#include <FreeRTOSConfig.h>
+#include <FreeRTOS.h>
+#include <queue.h>
+
 #ifdef __cplusplus
 extern "C" {
 #endif
