@@ -1,15 +1,16 @@
 #include <stdio.h>
 #include <uart0.h>
-
+#include <string.h>
 bool recieved(void);
 void send(char* str);
 char *bufptr;
 uint8_t len;
-uint8_t address;
+//uint8_t address;
 struct socket
 {
 	uint8_t address;
 	uint8_t dest_port;
+	uint8_t frame;
 }soc
 
 void init()
@@ -22,7 +23,7 @@ void init()
 int main()
 {
 	init();
-	char str[255];	//the string want to send
+	string str;	//the string want to send
 	uint16_t p = 0;	//the position of string
 	uint16_t addr = 0;
 	uint16_t port = 0;
@@ -58,6 +59,7 @@ int main()
 				*str++ = '\n';
 				*str = 0;
 				sent = false;
+				len = strlen(str);
 			}
 			else if(c == ':')
 			{
