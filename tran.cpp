@@ -1,6 +1,8 @@
 #include <stdio.h>
 #include <uart0.h>
 #include <avr/io.h>
+#include <tran_layer.h>
+#include <net_layer.h>
 
 #define DATA_SIZE 114
 #define PORT 1
@@ -34,6 +36,13 @@ int trans(void)
 	}
 	return 1;	
 }
+
+
+void get_soc(struct socket *a)
+{
+	soc = *a;
+}
+
 void pack(void)
 {
 	pck.src_port = PORT;
@@ -81,4 +90,9 @@ void pack(void)
 			//send
 		}
 	}
+}
+
+void unpack(void)
+{
+	uint8_t datalen = net_read(&pck);
 }
