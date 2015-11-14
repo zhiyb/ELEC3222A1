@@ -1,6 +1,6 @@
 #include <stdio.h>
 #include <uart0.h>
-#include <string.h>
+
 bool recieved(void);
 void send(char* str);
 char *bufptr;
@@ -23,12 +23,14 @@ void init()
 int main()
 {
 	init();
-	string str;	//the string want to send
+	char *str;	//the string want to send
 	uint16_t p = 0;	//the position of string
 	uint16_t addr = 0;
 	uint16_t port = 0;
 	bool sent = true;
 	char c;
+	uint8_t i = 0;
+	len = 0;
 	puts("The system is init.");
 	while(1)
 	{
@@ -55,11 +57,13 @@ int main()
 		if ((c = uart_read_unblocked()) != -1) {
 			putchar(c);
 			*str++ = c;
+			i++;
 			if (c == '\n' || c == '\r') {
 				*str++ = '\n';
 				*str = 0;
 				sent = false;
-				len = strlen(str);
+				//send_len();
+				len = i;
 			}
 			else if(c == ':')
 			{
