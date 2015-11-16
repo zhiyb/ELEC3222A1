@@ -91,3 +91,8 @@ void unpack(uint8_t len_data, uint8_t *data)
 	len_data = net_read(&pck);
 	data = pck.appdata;	
 }
+
+void sync_len(uint8_t a)
+{
+	len = a;
+}
