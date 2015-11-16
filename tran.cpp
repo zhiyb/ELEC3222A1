@@ -4,6 +4,7 @@
 #include <tran_layer.h>
 #include <net_layer.h>
 
+#define STRUCT_SIZE 7
 #define DATA_SIZE 114
 #define PORT 1
 char *str;
@@ -23,18 +24,11 @@ struct socket{
 	uint16_t frame;
 } soc;
 
-int trans(void)
+void trans(void)
 {
-	//get_soc();
-	//get_data(*str, len);
-	//pck.checksum = 0;
-	//pack();
-	while(1)
-	{
-		get_soc();
-		pack();
-	}
-	return 1;	
+	get_soc();
+	pack();
+	tran_write((uint8_t *)&pck, pck.len + STRUCT_SIZE);	
 }
 
 
@@ -92,7 +86,8 @@ void pack(void)
 	}
 }
 
-void unpack(void)
+void unpack(uint8_t len_data, uint8_t *data)
 {
-	uint8_t datalen = net_read(&pck);
+	len_data = net_read(&pck);
+	data = pck.appdata;	
 }
