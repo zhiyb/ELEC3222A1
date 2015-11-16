@@ -19,7 +19,7 @@ void phy_init();
 
 enum PHYModes {PHYRX = 0, PHYTX};
 
-// RTOS queue for data transmit & receive
+// RTOS queue for data transmission & reception
 // Queue item size: 1 byte
 // Write to phy_tx will start transmission immediately
 QueueHandle_t phy_rx, phy_tx;
