@@ -20,7 +20,7 @@ void init()
 	stdin = uart0_fd();
 }
 
-int main()
+int main(void)
 {
 	init();
 	char *str;	//the string want to send
