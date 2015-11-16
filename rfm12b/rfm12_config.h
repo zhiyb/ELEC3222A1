@@ -101,7 +101,7 @@
 
 //use this for datarates >= 2700 Baud
 //#define DATARATE_VALUE        RFM12_DATARATE_CALC_HIGH(114900.0)
-#define DATARATE_VALUE        RFM12_DATARATE_CALC_HIGH(69000.0)
+#define DATARATE_VALUE        RFM12_DATARATE_CALC_HIGH(58000.0)
 // Data quality detector, minimum 4, maximum 7
 #define DATAFILTER_DQD		6
 

@@ -44,7 +44,7 @@
 #include <string.h>
 
 #include <phy_layer.h>
-#include <dll_layer.h>
+#include <mac_layer.h>
 
 #include "rfm12_config.h"
 
@@ -152,11 +152,13 @@ uint8_t phy_free()
 void rfm12_tx(void *param)
 {
 	uint8_t data;
+	puts_P(PSTR("\e[96mrfm12_tx task initialised."));
 loop:
 	// Wait for item available to transmit
 	while (xQueuePeek(phy_tx, &data, portMAX_DELAY) != pdTRUE);
 	// Put rfm12b to TX mode
 	phy_transmit();
+	xQueueReset(rfm_mode);
 	// Wait for transmit complete (return to RX mode)
 	while (xQueueReceive(rfm_mode, &data, portMAX_DELAY) != pdTRUE || data != PHYRX);
 	goto loop;
@@ -247,22 +249,16 @@ ISR(RFM12_INT_VECT)
 			//see what we have to do (start rx, rx or tx)
 			switch (ctrl.mode) {
 			case PHYRX:	// Receiving
-#if 1
 				{
-					//putchar('.');
 					uint8_t data = rfm12_read(RFM12_CMD_READ);
 					xQueueSendToBackFromISR(phy_rx, &data, &xTaskWoken);
-				}
-#else
-				{
-					uint8_t data = rfm12_read(RFM12_CMD_READ);
+#if 0
 					if (isprint(data))
 						putchar(data);
 					else
 						printf("\\x%02x", data);
-					dll_data_handler(data);
-				}
 #endif
+				}
 				break;
 			default:	// Transmitting
 				{
@@ -293,7 +289,9 @@ ISR(RFM12_INT_VECT)
 						//load a dummy byte to clear int status
 						//rfm12_data( RFM12_CMD_TX | 0x00);
 						ctrl.mode = data = PHYRX;
-						phy_receive();
+						//phy_receive();
+						rfm12_data( RFM12_CMD_FIFORESET | CLEAR_FIFO_INLINE);
+						rfm12_data( RFM12_CMD_FIFORESET | ACCEPT_DATA_INLINE);
 						padded = 0;
 						xQueueSendToBackFromISR(rfm_mode, &data, &xTaskWoken);
 					}
@@ -406,13 +404,14 @@ void phy_init(void) {
 	// Initialise control structure
 	ctrl.mode = PHYRX;
 
+	puts_P(PSTR("\e[96mrfm12 task setting up..."));
 	// Initialise RTOS queue
-	phy_rx = xQueueCreate(16, 1);
+	phy_rx = xQueueCreate(32, 1);
 	phy_tx = xQueueCreate(16, 1);
 	rfm_mode = xQueueCreate(1, 1);
 	while (phy_rx == 0 || phy_tx == 0 || rfm_mode == 0);
 
-	xTaskCreate(rfm12_tx, "RFM12 TX", configMINIMAL_STACK_SIZE, NULL, tskINT_PRIORITY, NULL);
+	xTaskCreate(rfm12_tx, "RFM12 TX", 128, NULL, tskINT_PRIORITY, NULL);
 
 	//write all the initialisation values to rfm12
 	uint8_t x;
