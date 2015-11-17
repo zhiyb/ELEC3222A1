@@ -27,7 +27,6 @@ int main(void)
 	uint16_t p = 0;	//the position of string
 	uint16_t addr = 0;
 	uint16_t port = 0;
-	bool sent = true;
 	char c;
 	uint8_t i = 0;
 	len = 0;
@@ -44,15 +43,6 @@ int main(void)
 			printf("\n");
 			printf("The data is from %d \n", soc.address);
 		}
-		if (sent == false) 
-		{
-			sent = true;
-			if (sent) 
-			{
-				puts(str);
-			}
-		}
-
 		// If something is received through UART
 		if ((c = uart_read_unblocked()) != -1) {
 			putchar(c);
@@ -61,9 +51,10 @@ int main(void)
 			if (c == '\n' || c == '\r') {
 				*str++ = '\n';
 				*str = 0;
-				sent = false;
-				//send_len();
-				len = i;
+				sync_len(i);
+				tran();
+				//complete sync the len of the data, and then transfer string into transport layer
+				i = 0;
 			}
 			else if(c == ':')
 			{
@@ -101,15 +92,10 @@ int main(void)
 	return 1;
 }
 
-bool recieve(void)
-{	
-	bufptr = rec_arr;
-	len = sizeof(rec_arr);
-	address = src_port;
-}
-
-bool send(char* str)
+bool recieve(bool re)
 {
-	sendto_test
-	//send_app(str);	
+	if(re)
+		return true;
+	else
+		return false;
 }
