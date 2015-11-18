@@ -31,7 +31,8 @@ void get_soc(struct socket *a)
 void tran_write(const uint8_t *data, uint16_t length);
 // Read <length> bytes of data, return the actual bytes read
 //uint16_t tran_read(uint8_t *data, uint16_t length);
-void unpack(uint8_t len_data, uint8_t *data);
+//void unpack(uint8_t len_data, uint8_t *data);
+void write_to_app(uint8_t len_data, uint8_t *data);
 externn QueueHandle_t tran_tx, tran_rx;
 #ifdef __cplusplus
 }

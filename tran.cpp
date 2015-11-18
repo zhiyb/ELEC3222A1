@@ -133,5 +133,6 @@ loop:
 	tf = *data;
 	pck = tf.*tem;
 	//sendtoapp();
-	goto loop
+	write_to_app(pck.len, pck.appdata);
+	goto loop;
 }
