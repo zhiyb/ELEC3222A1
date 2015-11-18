@@ -28,7 +28,8 @@ void trans(void)
 {
 	get_soc();
 	pack();
-	tran_write((uint8_t *)&pck, pck.len + STRUCT_SIZE);	
+	tran_write((uint8_t *)&pck, pck.len + STRUCT_SIZE);
+	net_tran(void);	
 }
 
 
