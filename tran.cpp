@@ -4,6 +4,8 @@
 #include <tran_layer.h>
 #include <net_layer.h>
 
+#include <task.h>
+
 #define STRUCT_SIZE 7
 #define DATA_SIZE 114
 #define PORT 1
@@ -18,6 +20,11 @@ struct package{
 	uint16_t checksum;
 } pck;
 
+struct tran_fram{
+	uint8_t tran_len;
+	struct package *tem;
+} tf;
+
 struct socket{
 	uint16_t address;
 	uint16_t port;
@@ -28,8 +35,9 @@ void trans(void)
 {
 	get_soc();
 	pack();
-	tran_write((uint8_t *)&pck, pck.len + STRUCT_SIZE);
-	net_tran(void);	
+
+//	tran_write((uint8_t *)&pck, pck.len + STRUCT_SIZE);
+//	net_tran(void);	
 }
 
 
@@ -96,4 +104,34 @@ void unpack(uint8_t len_data, uint8_t *data)
 void sync_len(uint8_t a)
 {
 	len = a;
+}
+void tran_tx_task(void *param)
+{
+	static struct package pkg;
+	printf("TX task init");
+loop:
+	while (xQueueReceive(tran_tx, str, portMAX_DELAY) != pdTURE);
+	if(len == 0)
+		goto loop;
+	get_soc();
+	pack();
+	uint8_t data_len = len + STRUCT_SIZE;
+	tf.tran_len = data_len;
+	tf.tem = &pck;
+	while((data_len + 1)--)
+	{
+		while(xQueueSendToBack(tran_tx, &tf, portMAX_DELAY) != pdTURE);	
+	}
+	goto loop;
+}
+void tran_rx_task(void *param)
+{
+	uint8_t *buffer = 0;
+	uint8_t *data;
+loop: 
+	while(xQueueReceive(net_rx, data, portMAX_DELAY) != pdTRUE);
+	tf = *data;
+	pck = tf.*tem;
+	//sendtoapp();
+	goto loop
 }
