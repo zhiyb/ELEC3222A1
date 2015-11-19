@@ -23,6 +23,14 @@ void uart0_init()
 	while (uart0_semaphore == NULL);
 }
 
+void uart0_interrupt_rxc(uint8_t e)
+{
+	if (e)
+		UCSR0B |= _BV(RXCIE0);
+	else
+		UCSR0B &= ~_BV(RXCIE0);
+}
+
 int uart0_read_unblocked()
 {
 	if (!uart0_available())
