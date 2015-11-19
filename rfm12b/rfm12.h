@@ -52,56 +52,8 @@ extern "C" {
 #include <stdio.h>
 
 /************************
- * private control structs
- */
-
-struct rfm12_ctrl_t
-{
-	volatile uint8_t mode;
-};
-
-#if 0
-struct rfm12_tx_buffer_t
-{
-	uint8_t write;
-	volatile uint8_t read;
-	uint8_t buffer[RFM12_TX_BUFFER_SIZE];
-};
-
-struct rfm12_rx_buffer_t
-{
-	volatile uint8_t write;
-	volatile uint8_t read;
-	uint8_t buffer[RFM12_RX_BUFFER_SIZE];
-};
-#endif
-
-extern struct rfm12_ctrl_t ctrl;
-#if 0
-extern struct rfm12_tx_buffer_t tx;
-extern struct rfm12_rx_buffer_t rx;
-
-#define RFM12_TX_BUFFER_MASK	(RFM12_TX_BUFFER_SIZE - 1)
-#define RFM12_RX_BUFFER_MASK	(RFM12_RX_BUFFER_SIZE - 1)
-#endif
-
-/************************
  * function protoypes
 */
-
-//see rfm12.c for more documentation
-#if 0
-#if (RFM12_USE_POLLING)
-void rfm12_poll(void)
-#endif
-void rfm12_init(void);
-#if 0
-void rfm12_tick(void);
-void rfm12_send(uint8_t length, char *buffer);
-uint8_t rfm12_recv(uint8_t length, char *buffer);
-static inline uint8_t rfm12_available() {return (rx.write - rx.read) & RFM12_RX_BUFFER_MASK;}
-#endif
-#endif
 
 /************************
  * include headers for all the optional stuff in here
