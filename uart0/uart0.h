@@ -45,6 +45,9 @@ void uart0_write(const char data);
 void uart0_lock();
 void uart0_unlock();
 
+// Enable/disable RXC interrupt
+void uart0_interrupt_rxc(uint8_t e);
+
 #ifdef __cplusplus
 }
 #endif

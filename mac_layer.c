@@ -36,12 +36,12 @@ struct mac_buffer_t {
 
 void mac_tx_task(void *param)
 {
-	static struct mac_frame data;
+	static struct mac_frame frame;
 	puts_P(PSTR("\e[96mMAC TX task initialised."));
 
 loop:
 	// Receive 1 frame from queue
-	while (xQueueReceive(mac_tx, &data, portMAX_DELAY) != pdTRUE);
+	while (xQueueReceive(mac_tx, &frame, portMAX_DELAY) != pdTRUE);
 
 	// CSMA
 	if (phy_mode() == PHYRX)
@@ -51,7 +51,7 @@ loop:
 		} while (!phy_free());
 
 	// Start transmission
-	uint8_t *ptr = data.payload;
+	uint8_t *ptr = frame.payload;
 
 	// Transmit header
 	uint8_t tmp = FRAME_HEADER;
@@ -60,15 +60,16 @@ loop:
 
 	// Transmit address
 	// Destination address
-	while (xQueueSendToBack(phy_tx, &data.addr, portMAX_DELAY) != pdTRUE);
-	checksum += data.addr;
+	while (xQueueSendToBack(phy_tx, &frame.addr, portMAX_DELAY) != pdTRUE);
+	checksum += frame.addr;
 	// Source (self) address
 	tmp = mac_address();
 	while (xQueueSendToBack(phy_tx, &tmp, portMAX_DELAY) != pdTRUE);
 	checksum += tmp;
 
 	// Transmit payload data
-	while (data.len--) {
+	uint8_t len = frame.len;
+	while (len--) {
 		if (*ptr == FRAME_HEADER || *ptr == FRAME_FOOTER) {
 			// An escape byte required
 			tmp = FRAME_ESCAPE;
@@ -77,7 +78,7 @@ loop:
 		while (xQueueSendToBack(phy_tx, ptr, portMAX_DELAY) != pdTRUE);
 		checksum += *ptr++;
 	}
-	vPortFree(data.ptr);
+	vPortFree(frame.ptr);
 
 	// Transmit checksum
 	checksum = -checksum;
@@ -94,6 +95,7 @@ loop:
 
 void mac_rx_task(void *param)
 {
+	static struct mac_frame frame;
 	struct mac_buffer_t *buffer = 0;
 	uint8_t *ptr = 0, size = 0, data;
 	uint16_t checksum = 0;
@@ -133,13 +135,12 @@ loop:
 
 				if (checksum == 0) {	// Checksum passed
 					// Send frame to upper layer
-					struct mac_frame data;
-					data.addr = buffer->src;
-					data.len = size - FRAME_MIN_SIZE;	// Only payload length
-					data.ptr = buffer;
-					data.payload = buffer->payload;
+					frame.addr = buffer->src;
+					frame.len = size - FRAME_MIN_SIZE;	// Only payload length
+					frame.ptr = buffer;
+					frame.payload = buffer->payload;
 					// Send to upper layer
-					if (xQueueSendToBack(mac_rx, &data, portMAX_DELAY) == pdTRUE) {
+					if (xQueueSendToBack(mac_rx, &frame, portMAX_DELAY) == pdTRUE) {
 						buffer = pvPortMalloc(sizeof(struct mac_buffer_t));
 						if (buffer == 0) {
 							status = WaitingHeader;
@@ -170,7 +171,7 @@ loop:
 		checksum += *ptr++ = data;
 		if (size == 1)	// Destination address received
 			if (buffer->dest != mac_address() && buffer->dest != MAC_BROADCAST)
-				status = WaitingHeader;	// Not for this machine
+				status = WaitingHeader;	// Not for this station
 		break;
 	};
 	goto loop;
@@ -181,24 +182,25 @@ void mac_write(uint8_t addr, void *data, uint8_t length)
 	uint8_t *ptr;
 	while ((ptr = pvPortMalloc(length)) == 0)
 		puts_P(PSTR("malloc failed!"));
-	memcpy(ptr, data, length);
+	memcpy(ptr, data, length);//(destination, source, number)
 	struct mac_frame item;
 	item.addr = addr;
 	item.len = length;
 	item.ptr = ptr;
 	item.payload = ptr;
 	while (xQueueSendToBack(mac_tx, &item, portMAX_DELAY) != pdTRUE);
+	/////////////////(xQueue, pvItemtoQueue, xTicketsToWait)
 }
 
 uint8_t mac_written()
 {
-	return phy_mode() != PHYTX && uxQueueMessagesWaiting(mac_tx) == 0;
+	return phy_mode() == PHYRX && uxQueueMessagesWaiting(mac_tx) == 0;
 }
 
 uint8_t mac_address_update(uint8_t addr)
 {
 	while (addr == MAC_BROADCAST)
-		addr = rand() & 0xff;
+		addr = rand() & 0xff;//generate a random new mac address
 	eeprom_update_byte(&NVAddress, addr);
 	mac_addr = addr;
 	return mac_addr;
@@ -206,7 +208,8 @@ uint8_t mac_address_update(uint8_t addr)
 
 uint8_t mac_address()
 {
-	if (mac_addr != MAC_BROADCAST)
+	if (mac_addr != MAC_BROADCAST)//if mac_address is broadcast address, it should be updated. t
+		// if they are the same then you won't know if the package is for you or broadcast.
 		return mac_addr;
 	return mac_address_update(eeprom_read_byte(&NVAddress));
 }
@@ -215,7 +218,7 @@ void mac_init()
 {
 	puts_P(PSTR("\e[96mMAC task setting up..."));
 	mac_tx = xQueueCreate(1, sizeof(struct mac_frame));
-	mac_rx = xQueueCreate(3, sizeof(struct mac_frame));
-	xTaskCreate(mac_tx_task, "MAC TX", 128, NULL, tskPROT_PRIORITY, NULL);
-	xTaskCreate(mac_rx_task, "MAC RX", 128, NULL, tskPROT_PRIORITY, NULL);
+	mac_rx = xQueueCreate(2, sizeof(struct mac_frame));
+	xTaskCreate(mac_tx_task, "MAC TX", configMINIMAL_STACK_SIZE, NULL, tskPROT_PRIORITY, NULL);
+	xTaskCreate(mac_rx_task, "MAC RX", configMINIMAL_STACK_SIZE, NULL, tskPROT_PRIORITY, NULL);
 }
