@@ -62,10 +62,14 @@
  * library internal globals
 */
 
-// Buffer and status for packet transmission.
-struct rfm12_ctrl_t ctrl;
-// RTOS queue for waiting for PHY mode change
-QueueHandle_t rfm_mode, phy_tx, phy_rx;
+static struct rfm12_ctrl_t
+{
+	volatile uint8_t mode;
+} ctrl;
+
+static TaskHandle_t txTask;
+
+QueueHandle_t phy_tx, phy_rx;
 
 /************************
  * load other core and external components
@@ -105,14 +109,11 @@ void phy_transmit()
 
 	// Initialise transmission
 	cli();
-	//RFM12_INT_OFF();
 	ctrl.mode = PHYTX;
 	rfm12_data(RFM12_CMD_PWRMGT | PWRMGT_DEFAULT ); /* disable receiver */
 	rfm12_data(RFM12_CMD_TX | 0x2d);
 	rfm12_data(RFM12_CMD_TX | 0xa4);	// The sync bytes
 	rfm12_data(RFM12_CMD_PWRMGT | PWRMGT_DEFAULT | RFM12_PWRMGT_ET);
-	//RFM12_INT_FLAG = (1<<RFM12_FLAG_BIT);
-	//RFM12_INT_ON();
 	sei();
 }
 
@@ -153,14 +154,16 @@ void rfm12_tx(void *param)
 {
 	uint8_t data;
 	puts_P(PSTR("\e[96mrfm12_tx task initialised."));
+
 loop:
 	// Wait for item available to transmit
 	while (xQueuePeek(phy_tx, &data, portMAX_DELAY) != pdTRUE);
 	// Put rfm12b to TX mode
 	phy_transmit();
-	xQueueReset(rfm_mode);
+
+	ulTaskNotifyTake(0, 0);
 	// Wait for transmit complete (return to RX mode)
-	while (xQueueReceive(rfm_mode, &data, portMAX_DELAY) != pdTRUE || data != PHYRX);
+	while (ulTaskNotifyTake(0, portMAX_DELAY) == 0);
 	goto loop;
 }
 
@@ -271,13 +274,6 @@ ISR(RFM12_INT_VECT)
 						else
 							printf("\\x%02x", data);
 #endif
-#if 0
-						if (status & (RFM12_STATUS_RGUR >> 8)) {
-							if (!dll_data_request(&data))
-								continue;
-							rfm12_data(RFM12_CMD_TX | data);
-						}
-#endif
 					} else if (!padded) {
 						// Dummy byte ensure the last byte is transmitted
 						rfm12_data(RFM12_CMD_TX | 0xff);
@@ -286,14 +282,11 @@ ISR(RFM12_INT_VECT)
 						//turn off the transmitter and enable receiver
 						//the receiver is not enabled in transmit only mode (by PWRMGT_RECEIVE macro)
 						rfm12_data(PWRMGT_RECEIVE);
-						//load a dummy byte to clear int status
-						//rfm12_data( RFM12_CMD_TX | 0x00);
 						ctrl.mode = data = PHYRX;
-						//phy_receive();
 						rfm12_data( RFM12_CMD_FIFORESET | CLEAR_FIFO_INLINE);
 						rfm12_data( RFM12_CMD_FIFORESET | ACCEPT_DATA_INLINE);
 						padded = 0;
-						xQueueSendToBackFromISR(rfm_mode, &data, &xTaskWoken);
+						xTaskNotifyGive(txTask);
 					}
 				}
 			}
@@ -408,10 +401,10 @@ void phy_init(void) {
 	// Initialise RTOS queue
 	phy_rx = xQueueCreate(32, 1);
 	phy_tx = xQueueCreate(16, 1);
-	rfm_mode = xQueueCreate(1, 1);
-	while (phy_rx == 0 || phy_tx == 0 || rfm_mode == 0);
+	while (phy_rx == 0 || phy_tx == 0);
 
-	xTaskCreate(rfm12_tx, "RFM12 TX", 128, NULL, tskINT_PRIORITY, NULL);
+	xTaskCreate(rfm12_tx, "RFM12 TX", configMINIMAL_STACK_SIZE, NULL, tskPROT_PRIORITY, &txTask);
+	while (txTask == 0);
 
 	//write all the initialisation values to rfm12
 	uint8_t x;
