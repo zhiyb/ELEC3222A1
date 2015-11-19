@@ -1,4 +1,5 @@
 #include <avr/pgmspace.h>
+#include <avr/eeprom.h>
 #include <util/delay.h>
 #include <string.h>
 #include <stdlib.h>
@@ -16,11 +17,22 @@
 #define FRAME_HEADER		0xaa
 #define FRAME_FOOTER		0xaa
 #define FRAME_ESCAPE		0xcc
+// Appended bytes (Address & checksum)
+#define FRAME_MIN_SIZE		(4)
 // Exclude header & footer
 #define FRAME_MAX_SIZE		(32 - 2)
 
-enum Status {WaitingHeader = 0, ReceivingData, Escaped};
-static uint8_t status = WaitingHeader;
+static EEMEM uint8_t NVAddress = ADDRESS;
+QueueHandle_t mac_tx, mac_rx;
+
+enum Status {WaitingHeader = 0, ReceivingData, ReceivingEscaped, FooterReceived};
+static uint8_t status = WaitingHeader, mac_addr = MAC_BROADCAST;
+
+struct mac_buffer_t {
+	uint8_t dest;
+	uint8_t src;
+	uint8_t payload[FRAME_MAX_SIZE - 2];
+};
 
 void mac_tx_task(void *param)
 {
@@ -30,25 +42,32 @@ void mac_tx_task(void *param)
 loop:
 	// Receive 1 frame from queue
 	while (xQueueReceive(mac_tx, &data, portMAX_DELAY) != pdTRUE);
-	if (data.len == 0)
-		goto loop;
 
 	// CSMA
 	if (phy_mode() == PHYRX)
 		do {
 			while (rand() % 4096 >= 4096 * CSMA)
 				vTaskDelay(1);
-		} while (status != WaitingHeader || !phy_free());
+		} while (!phy_free());
 
 	// Start transmission
-	uint8_t *ptr = data.ptr;
+	uint8_t *ptr = data.payload;
 
 	// Transmit header
 	uint8_t tmp = FRAME_HEADER;
 	while (xQueueSendToBack(phy_tx, &tmp, portMAX_DELAY) != pdTRUE);
+	uint16_t checksum = 0;
+
+	// Transmit address
+	// Destination address
+	while (xQueueSendToBack(phy_tx, &data.addr, portMAX_DELAY) != pdTRUE);
+	checksum += data.addr;
+	// Source (self) address
+	tmp = mac_address();
+	while (xQueueSendToBack(phy_tx, &tmp, portMAX_DELAY) != pdTRUE);
+	checksum += tmp;
 
 	// Transmit payload data
-	uint16_t checksum = 0;
 	while (data.len--) {
 		if (*ptr == FRAME_HEADER || *ptr == FRAME_FOOTER) {
 			// An escape byte required
@@ -75,13 +94,9 @@ loop:
 
 void mac_rx_task(void *param)
 {
-	static uint8_t *buffer = 0;
-
-	//static struct mac_frame data;
-	static uint8_t *ptr = 0;
-	static uint8_t size = 0;
-	static uint16_t checksum;
-	uint8_t data;
+	struct mac_buffer_t *buffer = 0;
+	uint8_t *ptr = 0, size = 0, data;
+	uint16_t checksum = 0;
 	puts_P(PSTR("\e[96mMAC RX task initialised."));
 
 loop:
@@ -95,20 +110,22 @@ loop:
 		}
 
 		// Alloc buffer
-		if (buffer == 0 && (buffer = pvPortMalloc(FRAME_MAX_SIZE)) == 0)
+		if (buffer == 0 && (buffer = pvPortMalloc(sizeof(struct mac_buffer_t))) == 0)
 			break;
 
 		status = ReceivingData;
-		ptr = buffer;
+		ptr = (uint8_t *)buffer;
 		size = 0;
 		checksum = 0;
 		break;
 
+	case FooterReceived:
 	case ReceivingData:
 		switch (data) {
 		//case FRAME_HEADER:	// Same as FOOTER
 		case FRAME_FOOTER:
-			if (size >= 3) {
+			if (size > FRAME_MIN_SIZE) {
+				status = FooterReceived;
 				// Check checksum for frame corruption
 				// Higher byte in received checksum (little endian)
 				uint8_t ckh = *(ptr - 1);
@@ -117,59 +134,81 @@ loop:
 				if (checksum == 0) {	// Checksum passed
 					// Send frame to upper layer
 					struct mac_frame data;
-					data.len = size - 2;	// Remove checksum
+					data.addr = buffer->src;
+					data.len = size - FRAME_MIN_SIZE;	// Only payload length
 					data.ptr = buffer;
+					data.payload = buffer->payload;
 					// Send to upper layer
-					xQueueSendToBack(mac_rx, &data, portMAX_DELAY);
-					buffer = pvPortMalloc(FRAME_MAX_SIZE);
-					if (buffer == 0) {
-						status = WaitingHeader;
-						break;
+					if (xQueueSendToBack(mac_rx, &data, portMAX_DELAY) == pdTRUE) {
+						buffer = pvPortMalloc(sizeof(struct mac_buffer_t));
+						if (buffer == 0) {
+							status = WaitingHeader;
+							break;
+						}
 					}
 				}
-			}
+			} else
+				status = ReceivingData;
+
 			// Reset
-			ptr = buffer;
+			ptr = (uint8_t *)buffer;
 			size = 0;
 			checksum = 0;
 			goto loop;
 		case FRAME_ESCAPE:
-			status = Escaped;
+			status = ReceivingEscaped;
 			goto loop;
 		}
 
 		// Data reception
-	case Escaped:
+	case ReceivingEscaped:
 		// Buffer overwrite
 		if (size++ == FRAME_MAX_SIZE) {
 			status = WaitingHeader;
 			break;
 		}
 		checksum += *ptr++ = data;
+		if (size == 1)	// Destination address received
+			if (buffer->dest != mac_address() && buffer->dest != MAC_BROADCAST)
+				status = WaitingHeader;	// Not for this machine
 		break;
 	};
 	goto loop;
 }
 
-void mac_write(void *data, uint8_t length)
+void mac_write(uint8_t addr, void *data, uint8_t length)
 {
 	uint8_t *ptr;
-alloc:
-	ptr = pvPortMalloc(length);
-	if (ptr == 0) {
+	while ((ptr = pvPortMalloc(length)) == 0)
 		puts_P(PSTR("malloc failed!"));
-		goto alloc;
-	}
 	memcpy(ptr, data, length);
 	struct mac_frame item;
+	item.addr = addr;
 	item.len = length;
 	item.ptr = ptr;
+	item.payload = ptr;
 	while (xQueueSendToBack(mac_tx, &item, portMAX_DELAY) != pdTRUE);
 }
 
 uint8_t mac_written()
 {
 	return phy_mode() != PHYTX && uxQueueMessagesWaiting(mac_tx) == 0;
+}
+
+uint8_t mac_address_update(uint8_t addr)
+{
+	while (addr == MAC_BROADCAST)
+		addr = rand() & 0xff;
+	eeprom_update_byte(&NVAddress, addr);
+	mac_addr = addr;
+	return mac_addr;
+}
+
+uint8_t mac_address()
+{
+	if (mac_addr != MAC_BROADCAST)
+		return mac_addr;
+	return mac_address_update(eeprom_read_byte(&NVAddress));
 }
 
 void mac_init()
