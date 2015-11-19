@@ -30,7 +30,7 @@ loop:
 		uart0_lock();
 		printf_P(PSTR("\e[91mStation %02x, sent %u(%u bytes)\e[0m\n"), mac_address(), count++, strlength);
 		uart0_unlock();
-		mac_write(MAC_BROADCAST, (void *)string, strlength);
+		mac_write(PINA, (void *)string, strlength);
 	}
 	while (!mac_written());
 	vTaskDelay(10);	// Waiting for data reception
@@ -76,6 +76,9 @@ void init()
 	stdout = uart0_fd();
 	stdin = uart0_fd();
 	puts_P(PSTR("\x0c\e[96mStarting up..."));
+
+	DDRA = 0x00;
+	PORTA = 0xff;
 
 	phy_init();
 	mac_init();
