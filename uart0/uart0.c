@@ -1,5 +1,8 @@
 #include <avr/io.h>
+#include <avr/interrupt.h>
 #include "uart0.h"
+
+static SemaphoreHandle_t uart0_semaphore;
 
 void uart0_init()
 {
@@ -15,6 +18,9 @@ void uart0_init()
 	UCSR0A = USE_2X << U2X0;
 	UCSR0B = _BV(RXEN0) | _BV(TXEN0);
 	UCSR0C = _BV(UCSZ00) | _BV(UCSZ01);
+
+	uart0_semaphore = xSemaphoreCreateMutex();
+	while (uart0_semaphore == NULL);
 }
 
 int uart0_read_unblocked()
@@ -33,16 +39,28 @@ char uart0_read()
 
 int uart0_write_unblocked(const char data)
 {
-	if (!uart0_ready())
+	portENTER_CRITICAL();
+	if (!uart0_ready()) {
+		portEXIT_CRITICAL();
 		return -1;
+	}
 	UDR0 = data;
+	portEXIT_CRITICAL();
 	return data;
 }
 
 void uart0_write(const char data)
 {
+loop:
 	while (!uart0_ready());
+	portENTER_CRITICAL();
+	if (!uart0_ready()) {
+		portEXIT_CRITICAL();
+		goto loop;
+	}
+
 	UDR0 = data;
+	portEXIT_CRITICAL();
 }
 
 // For fdevopen
@@ -66,4 +84,14 @@ FILE *uart0_fd()
 	if (dev == NULL)
 		dev = fdevopen(putch, getch);
 	return dev;
+}
+
+void uart0_lock()
+{
+	while (xSemaphoreTake(uart0_semaphore, portMAX_DELAY) != pdTRUE);
+}
+
+void uart0_unlock()
+{
+	xSemaphoreGive(uart0_semaphore);
 }
