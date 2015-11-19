@@ -168,5 +168,5 @@ void phy_init()
 	while (i--)
 		_delay_ms(10);
 
-	xTaskCreate(phy_tx_task, "PHY TX", 128, NULL, tskINT_PRIORITY, NULL);
+	xTaskCreate(phy_tx_task, "PHY TX", 128, NULL, tskPROT_PRIORITY, NULL);
 }
