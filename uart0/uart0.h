@@ -10,6 +10,11 @@ extern "C" {
 #include <avr/io.h>
 #include <stdio.h>
 
+// RTOS
+#include <FreeRTOSConfig.h>
+#include <FreeRTOS.h>
+#include <semphr.h>
+
 // Initialise UART 0
 void uart0_init();
 
@@ -35,6 +40,10 @@ int uart0_write_unblocked(const char data);
 
 // Write 1 character, blocking
 void uart0_write(const char data);
+
+// RTOS mutex
+void uart0_lock();
+void uart0_unlock();
 
 #ifdef __cplusplus
 }

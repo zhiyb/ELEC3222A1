@@ -22,7 +22,7 @@ enum PHYModes {PHYRX = 0, PHYTX};
 // RTOS queue for data transmission & reception
 // Queue item size: 1 byte
 // Write to phy_tx will start transmission immediately
-QueueHandle_t phy_rx, phy_tx;
+extern QueueHandle_t phy_rx, phy_tx;
 
 // Returns current hardware mode (enum PHYModes)
 uint8_t phy_mode();
