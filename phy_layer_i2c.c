@@ -22,7 +22,6 @@
 
 struct phy_ctrl_t
 {
-	//volatile uint8_t mode;
 	volatile uint8_t status;
 	volatile uint8_t transmit;
 };
@@ -41,22 +40,15 @@ uint8_t phy_mode()
 // Whether channel is free
 uint8_t phy_free()
 {
-	return /*phy_mode() == PHYRX &&*/ ctrl.status == 0;
+	return ctrl.status == 0;
 }
 
 // Start transmission
 void phy_transmit()
 {
-	//cli();
 	ctrl.transmit = 1;
-	//printf("s%02x,", (TWSR & (0xff << 3)));
-	if (/*phy_mode() == PHYRX &&*/ ctrl.status == 0 && (TWSR & (0xff << 3)) == 0xf8) {
+	if (ctrl.status == 0 && (TWSR & (0xff << 3)) == 0xf8)
 		TWCR = TWCR_ACT | _BV(TWSTA);
-		//ctrl.mode = PHYTX;
-	} else {
-		//while (ctrl.transmit);
-	}
-	//sei();
 }
 
 // Reset receive mode (waiting for sync byte)
@@ -72,13 +64,11 @@ void phy_tx_task(void *param)
 loop:
 	// Wait for item available to transmit
 	while (xQueuePeek(phy_tx, &data, portMAX_DELAY) != pdTRUE);
-	//puts_P(PSTR("\e[96mPHY TX received."));
-	xQueueReset(phy_m);
 	// Put rfm12b to TX mode
 	phy_transmit();
+	xQueueReset(phy_m);
 	// Wait for transmit complete (return to RX mode)
 	while (xQueueReceive(phy_m, &data, portMAX_DELAY) != pdTRUE || data != PHYRX);
-	//puts_P(PSTR("\e[96mPHY TX transmitted."));
 	goto loop;
 }
 
@@ -88,83 +78,65 @@ ISR(TWI_vect)
 	BaseType_t xTaskWoken = pdFALSE;
 	ctrl.status = status = TWSR & (0xff << 3);
 	//printf("$%02x,", status);
-	//if (ctrl.mode == PHYRX) {	// Slave receiver mode
-		//TWCR &= ~(_BV(TWSTA) | _BV(TWSTO));
-		switch (status) {
-		case 0x60:	// SLA+W received; ACK returned
-		case 0x68:	// Arbitration lost in SLA+R/W (master); SLA+W received; ACK returned
-		case 0x70:	// General call received; ACK returned
-		case 0x78:	// Arbitration lost in SLA+R/W (master); General call received; ACK returned
-			TWCR = TWCR_ACT;
-			break;
-		case 0x80:	// Addressed with SLA+W; Data received; ACK returned
-		case 0x88:	// ...NACK returned
-		case 0x90:	// Addressed with general call; Data received; ACK returned
-		case 0x98:	// ...NACK returned
-			{
-				uint8_t data = TWDR;
-				xQueueSendToBackFromISR(phy_rx, &data, &xTaskWoken);
-			}
-			TWCR = TWCR_ACT;
-			break;
-		case 0xa0:	// STOP or repeated START received
-			ctrl.status = 0;
-			//putchar('\n');
-			if (ctrl.transmit) {
-				//TWCR |= _BV(TWSTA);
-				TWCR = TWCR_ACT | _BV(TWSTA);
-				//ctrl.mode = PHYTX;
-				goto ret;
-			}
-			TWCR = TWCR_ACT;
-			break;
-#if 0
-		default:
-			printf("%%%01x%02x%%", ctrl.mode, status);
+
+	switch (status) {
+	// Slave receiver mode
+	case 0x60:	// SLA+W received; ACK returned
+	case 0x68:	// Arbitration lost in SLA+R/W (master); SLA+W received; ACK returned
+	case 0x70:	// General call received; ACK returned
+	case 0x78:	// Arbitration lost in SLA+R/W (master); General call received; ACK returned
+		TWCR = TWCR_ACT;
+		break;
+	case 0x80:	// Addressed with SLA+W; Data received; ACK returned
+	case 0x88:	// ...NACK returned
+	case 0x90:	// Addressed with general call; Data received; ACK returned
+	case 0x98:	// ...NACK returned
+		{
+			uint8_t data = TWDR;
+			xQueueSendToBackFromISR(phy_rx, &data, &xTaskWoken);
 		}
-		TWCR &= ~(_BV(TWSTA) | _BV(TWSTO));
-	} else {			// Master transmitter mode
-		switch (status) {
-#endif
-		case 0x08:	// START transmitted
-		case 0x10:	// Repeated START transmitted
-			TWDR = 0;	// General call, write
-			//TWCR &= ~_BV(TWSTA);
-			TWCR = TWCR_ACT;
-			break;
-		case 0x18:	// SLA+W transmitted; ACK received
-		case 0x20:	// ...NACK received
-		case 0x28:	// Data transmitted; ACK received
-		case 0x30:	// ...NACK received
-			{
-				uint8_t data;
-				if (xQueueReceiveFromISR(phy_tx, &data, &xTaskWoken) == pdTRUE) {
-					TWDR = data;
-					TWCR = TWCR_ACT;
-				} else {
-					TWCR = TWCR_ACT | _BV(TWSTO);
-					//putchar('\n');
-					//TWCR |= _BV(TWSTO);
-					data = /*ctrl.mode =*/ PHYRX;
-					ctrl.status = 0;
-					ctrl.transmit = 0;
-					xQueueSendToBackFromISR(phy_m, &data, &xTaskWoken);
-				}
-			}
-			break;
-		case 0x38:	// Arbitration lost in SLA+W or data
-			//TWCR |= _BV(TWSTA);	// Transmit START again
+		TWCR = TWCR_ACT;
+		break;
+	case 0xa0:	// STOP or repeated START received
+		ctrl.status = 0;
+		if (ctrl.transmit) {
 			TWCR = TWCR_ACT | _BV(TWSTA);
-			//printf("%%%01x%02x%%", ctrl.mode, status);
-			printf("!%02x,", status);
 			break;
-		default:
-			//printf("%%%01x%02x%%", ctrl.mode, status);
-			printf("!%02x,", status);
 		}
-	//}
-ret:
-	//TWCR |= _BV(TWINT);
+		TWCR = TWCR_ACT;
+		break;
+
+	// Master transmitter mode
+	case 0x08:	// START transmitted
+	case 0x10:	// Repeated START transmitted
+		TWDR = 0;	// General call, write
+		TWCR = TWCR_ACT;
+		break;
+	case 0x18:	// SLA+W transmitted; ACK received
+	case 0x20:	// ...NACK received
+	case 0x28:	// Data transmitted; ACK received
+	case 0x30:	// ...NACK received
+		{
+			uint8_t data;
+			if (xQueueReceiveFromISR(phy_tx, &data, &xTaskWoken) == pdTRUE) {
+				TWDR = data;
+				TWCR = TWCR_ACT;
+			} else {
+				TWCR = TWCR_ACT | _BV(TWSTO);
+				data = PHYRX;
+				ctrl.status = 0;
+				ctrl.transmit = 0;
+				xQueueSendToBackFromISR(phy_m, &data, &xTaskWoken);
+			}
+		}
+		break;
+	case 0x38:	// Arbitration lost in SLA+W or data
+		TWCR = TWCR_ACT | _BV(TWSTA);
+		printf("!%02x,", status);
+		break;
+	default:
+		printf("!%02x,", status);
+	}
 
 	if (xTaskWoken)
 		taskYIELD();
@@ -188,7 +160,6 @@ void phy_init()
 	phy_tx = xQueueCreate(16, 1);
 	phy_m = xQueueCreate(1, 1);
 
-	//ctrl.mode = PHYRX;
 	ctrl.status = 0;
 	ctrl.transmit = 0;
 
