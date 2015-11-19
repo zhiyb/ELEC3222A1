@@ -65,7 +65,7 @@
 // Buffer and status for packet transmission.
 struct rfm12_ctrl_t ctrl;
 // RTOS queue for waiting for PHY mode change
-QueueHandle_t rfm_mode;
+QueueHandle_t rfm_mode, phy_tx, phy_rx;
 
 /************************
  * load other core and external components
