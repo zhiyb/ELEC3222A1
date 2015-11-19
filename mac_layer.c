@@ -182,13 +182,14 @@ void mac_write(uint8_t addr, void *data, uint8_t length)
 	uint8_t *ptr;
 	while ((ptr = pvPortMalloc(length)) == 0)
 		puts_P(PSTR("malloc failed!"));
-	memcpy(ptr, data, length);
+	memcpy(ptr, data, length);//(destination, source, number)
 	struct mac_frame item;
 	item.addr = addr;
 	item.len = length;
 	item.ptr = ptr;
 	item.payload = ptr;
 	while (xQueueSendToBack(mac_tx, &item, portMAX_DELAY) != pdTRUE);
+	/////////////////(xQueue, pvItemtoQueue, xTicketsToWait)
 }
 
 uint8_t mac_written()
@@ -199,7 +200,7 @@ uint8_t mac_written()
 uint8_t mac_address_update(uint8_t addr)
 {
 	while (addr == MAC_BROADCAST)
-		addr = rand() & 0xff;
+		addr = rand() & 0xff;//generate a random new mac address
 	eeprom_update_byte(&NVAddress, addr);
 	mac_addr = addr;
 	return mac_addr;
@@ -207,7 +208,8 @@ uint8_t mac_address_update(uint8_t addr)
 
 uint8_t mac_address()
 {
-	if (mac_addr != MAC_BROADCAST)
+	if (mac_addr != MAC_BROADCAST)//if mac_address is broadcast address, it should be updated. t
+		// if they are the same then you won't know if the package is for you or broadcast.
 		return mac_addr;
 	return mac_address_update(eeprom_read_byte(&NVAddress));
 }
