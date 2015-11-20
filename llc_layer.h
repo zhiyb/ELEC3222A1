@@ -19,21 +19,24 @@ extern "C" {
 // Initialisation
 void llc_init();
 
-// Interface with upper LLC layer
+// Interface with upper NET layer
 
 enum LLC_Primitives {DL_UNITDATA = 0, DL_DATA_ACK, DL_DATA_ACK_STATUS};
 
-// Structure of primitive to/from LLC layer
-struct llc_pri {
-	uint8_t pri;	// Primitives
+// Data transfer between LLC and upper layer
+struct llc_packet {
+	uint8_t pri;	// LLC_Primitives
 	uint8_t len;	// Data length
-	uint8_t *ptr;	// Pointer to data
+	void *ptr;	// Pointer to data (free after use)
 };
 
-// Pass primitives to LLC layer
-QueueHandle_t to_llc;
-// Primitives passed from LLC layer
-QueueHandle_t from_llc;
+// RTOS queue for packet transmission & reception
+// Queue item size: llc_packet
+extern QueueHandle_t llc_tx, llc_rx;
+
+uint8_t llc_written();
+// Copy data to tx queue
+void llc_write(void *data, uint8_t length);
 
 #ifdef __cplusplus
 }
