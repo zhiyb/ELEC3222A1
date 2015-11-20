@@ -72,8 +72,13 @@ poll:
 		}
 
 		// Report memory usage
-		if (report == 0)
-			printf_P(PSTR("\e[97mReport: free heap size: %d\n"), xPortGetFreeHeapSize());
+		if (report == 0) {
+			uint16_t total = configTOTAL_HEAP_SIZE;
+			uint16_t free = xPortGetFreeHeapSize();
+			uint16_t used = total - free;
+			uint16_t usage = (float)used * 100. / configTOTAL_HEAP_SIZE;
+			printf_P(PSTR("\e[97mReport: heap (free: %u, total: %u, usage: %u%%)\n"), free, total, usage);
+		}
 		report = report == 99 ? 0 : report + 1;
 		goto poll;
 	}
