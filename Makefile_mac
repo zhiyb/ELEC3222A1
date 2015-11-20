@@ -1,5 +1,0 @@
-SRC	+= mac_layer.c
-
-ADDRESS	?= 0
-
-DEFS	+= -DADDRESS=$(ADDRESS)
