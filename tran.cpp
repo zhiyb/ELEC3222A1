@@ -110,7 +110,7 @@ void tran_tx_task(void *param)
 	static struct package pkg;
 	printf("TX task init");
 loop:
-	while (xQueueReceive(tran_tx, str, portMAX_DELAY) != pdTURE);
+	while (xQueueReceive(tran_tx, str, portMAX_DELAY) != pdTRUE);
 	if(len == 0)
 		goto loop;
 	get_soc();
@@ -120,7 +120,7 @@ loop:
 	tf.tem = &pck;
 	while((data_len + 1)--)
 	{
-		while(xQueueSendToBack(tran_tx, &tf, portMAX_DELAY) != pdTURE);	
+		while(xQueueSendToBack(net_tx, &tf, portMAX_DELAY) != pdTRUE);	
 	}
 	goto loop;
 }
@@ -131,8 +131,17 @@ void tran_rx_task(void *param)
 loop: 
 	while(xQueueReceive(net_rx, data, portMAX_DELAY) != pdTRUE);
 	tf = *data;
-	pck = tf.*tem;
-	//sendtoapp();
-	write_to_app(pck.len, pck.appdata);
+	pck = *tf.tem;
+	
+		//sendtoapp();
+		while(xQueueSendToBack(tran_rx, pck, portMAX_DELAY) != pdTRUE);
+	
 	goto loop;
 }
+
+void listen(uint8_t port)
+{
+
+}
+
+void 

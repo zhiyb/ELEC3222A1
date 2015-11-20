@@ -3,6 +3,11 @@
 
 #include <stdint.h>
 
+// RTOS
+#include <FreeRTOSConfig.h>
+#include <FreeRTOS.h>
+#include <queue.h>
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -10,27 +15,29 @@ extern "C" {
 #define MAX_SOCKETS	16
 
 enum SocketStatus {SOCKET_ALLOCATED = 0, SOCKET_ACTIVE = 1, SOCKET_FREE = 0xff};
+enum SocketTypes {SOCKET_LISTEN = 0, SOCKET_CONNECTION = 1};
 
 struct socket_t {
 	uint16_t address;
-	uint16_t port;
+	uint16_t port, sport;
 
 	// enum SocketStatus
 	uint8_t status;
-
-	// Destination MAC address, used by NET & MAC
-	uint8_t dest_mac;
-
-	// Logical Link Control Layer
-	struct {
-		uint8_t status;	// State machine
-		uint16_t frame;	// Frame sequence number
-	} llc;
+	uint8_t type;
+	QueueHandler queue;
 };
 
 extern struct socket_t sockets[MAX_SOCKETS];
 
 void socket_init();
+// Alloc a socket
+void socket();
+// Listen on a port
+void listen(uint8_t sid, uint16_t port);
+// Accept a pending new connection
+uint8_t accept(uint8_t sid);
+// Read from socket buffer
+uint8_t read(uint8_t sid, uint8_t *buffer, uint8_t len);
 
 #ifdef __cplusplus
 }

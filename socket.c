@@ -8,3 +8,34 @@ void socket_init()
 	for (i = 0; i < MAX_SOCKETS; i++)
 		sockets[i].status = SOCKET_FREE;
 }
+
+// Alloc a socket
+void socket();
+// Listen on a port
+void listen(uint8_t sid, uint16_t port)
+{
+	struct socket_t *sptr = sockets + sid;
+	(*sptr).type = SOCKET_LISTEN;
+	sptr->port = port;
+	sptr->status = SOCKET_ACTIVE;
+	
+}
+
+// Accept a pending new connection
+uint8_t accept(uint8_t sid)
+{
+	uint8_t id;
+	struct socket_t *sptr = sockets + sid;
+	xQueueReceive(sptr->queue, &id, portMAX_DELAY != pdTRUE);
+	return id;
+	//while(xQdueueReceive(net_rx, data, portMAX_DELAY) != pdTRUE);
+}
+
+// Read from socket buffer
+uint8_t read(uint8_t sid, uint8_t *buffer, uint8_t len)
+{
+	while(xQueueReceive(tran_rx, buffer, portMAX_DELAY) != pdTRUE);
+	len = *buffer;
+	buffer++;
+	return len;
+}
