@@ -54,28 +54,26 @@ loop:
 	uint8_t *ptr = frame.payload;
 
 	// Transmit header
-	uint8_t tmp = FRAME_HEADER;
-	while (xQueueSendToBack(phy_tx, &tmp, portMAX_DELAY) != pdTRUE);
+	phy_tx(FRAME_HEADER);
 	uint16_t checksum = 0;
 
 	// Transmit address
 	// Destination address
-	while (xQueueSendToBack(phy_tx, &frame.addr, portMAX_DELAY) != pdTRUE);
+	phy_tx(frame.addr);
 	checksum += frame.addr;
 	// Source (self) address
-	tmp = mac_address();
-	while (xQueueSendToBack(phy_tx, &tmp, portMAX_DELAY) != pdTRUE);
+	uint8_t tmp = mac_address();
+	phy_tx(tmp);
 	checksum += tmp;
 
 	// Transmit payload data
-	uint8_t len = frame.len;
-	while (len--) {
+	tmp = frame.len;
+	while (tmp--) {
 		if (*ptr == FRAME_HEADER || *ptr == FRAME_FOOTER) {
 			// An escape byte required
-			tmp = FRAME_ESCAPE;
-			while (xQueueSendToBack(phy_tx, &tmp, portMAX_DELAY) != pdTRUE);
+			phy_tx(FRAME_ESCAPE);
 		}
-		while (xQueueSendToBack(phy_tx, ptr, portMAX_DELAY) != pdTRUE);
+		phy_tx(*ptr);
 		checksum += *ptr++;
 	}
 	vPortFree(frame.ptr);
@@ -83,13 +81,11 @@ loop:
 	// Transmit checksum
 	checksum = -checksum;
 	ptr = (uint8_t *)&checksum;
-	while (xQueueSendToBack(phy_tx, ptr, portMAX_DELAY) != pdTRUE);
-	ptr++;
-	while (xQueueSendToBack(phy_tx, ptr, portMAX_DELAY) != pdTRUE);
+	phy_tx(*ptr++);
+	phy_tx(*ptr);
 
 	// Transmit footer
-	tmp = FRAME_FOOTER;
-	while (xQueueSendToBack(phy_tx, &tmp, portMAX_DELAY) != pdTRUE);
+	phy_tx(FRAME_FOOTER);
 	goto loop;
 }
 
@@ -102,8 +98,8 @@ void mac_rx_task(void *param)
 	puts_P(PSTR("\e[96mMAC RX task initialised."));
 
 loop:
-	// Receive 1 byte data from PHY queue
-	while (xQueueReceive(phy_rx, &data, portMAX_DELAY) != pdTRUE);
+	// Receive 1 byte data from PHY
+	data = phy_rx();
 	switch (status) {
 	case WaitingHeader:
 		if (data != FRAME_HEADER) {
