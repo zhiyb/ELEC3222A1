@@ -1,11 +1,6 @@
 #ifndef PHY_LAYER_H
 #define PHY_LAYER_H
 
-// RTOS
-#include <FreeRTOSConfig.h>
-#include <FreeRTOS.h>
-#include <queue.h>
-
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -19,10 +14,10 @@ void phy_init();
 
 enum PHYModes {PHYRX = 0, PHYTX};
 
-// RTOS queue for data transmission & reception
-// Queue item size: 1 byte
-// Write to phy_tx will start transmission immediately
-extern QueueHandle_t phy_rx, phy_tx;
+// Transmit 1 byte data (blocking)
+void phy_tx(uint8_t data);
+// Receive 1 byte data (blocking)
+uint8_t phy_rx();
 
 // Returns current hardware mode (enum PHYModes)
 uint8_t phy_mode();
