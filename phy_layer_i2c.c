@@ -144,8 +144,8 @@ ISR(TWI_vect)
 		}
 		break;
 	case 0x38:	// Arbitration lost in SLA+W or data
-		TWCR = TWCR_ACT | _BV(TWSTA);
-		printf("!%02x,", status);
+		//printf("!%02x,", status);
+		TWCR = TWCR_ACT;
 		break;
 	default:
 		printf("!%02x,", status);
