@@ -19,8 +19,8 @@
 // Power of 2
 #define ACN_CACHE_SIZE		8
 
-#define RETRY_TIME	10
-#define RETRY_COUNT	16
+#define RETRY_TIME	40
+#define RETRY_COUNT	40
 
 QueueHandle_t llc_rx;
 static QueueHandle_t llc_ack;
@@ -121,6 +121,8 @@ static uint8_t llc_tx_frame(union ctrl_t ctrl, uint8_t seq, uint8_t addr, uint8_
 		do {
 			// Waiting for acknowledge
 			struct llc_ack_t ack;
+			while (!mac_written())
+				vTaskDelay(1);
 			if (xQueueReceive(llc_ack, &ack, RETRY_TIME) != pdTRUE) {
 				// No ACK received, retry
 				while (xQueueSendToBack(mac_tx, &mac, 0) != pdTRUE);
@@ -334,5 +336,5 @@ void llc_init()
 
 	llc_rx = xQueueCreate(2, sizeof(struct llc_packet_t));
 	llc_ack = xQueueCreate(2, sizeof(struct llc_ack_t));
-	while (xTaskCreate(llc_rx_task, "LLC RX", 180, NULL, tskPROT_PRIORITY, NULL) != pdPASS);
+	while (xTaskCreate(llc_rx_task, "LLC RX", configMINIMAL_STACK_SIZE, NULL, tskPROT_PRIORITY, NULL) != pdPASS);
 }
