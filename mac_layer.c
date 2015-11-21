@@ -11,7 +11,8 @@
 
 #include <task.h>
 
-#define CSMA	(0.1)
+#define CSMA		(0.1)
+#define CSMA_TIME	5
 
 // Field definition
 #define FRAME_HEADER		0xaa
@@ -44,11 +45,13 @@ loop:
 	while (xQueueReceive(mac_tx, &frame, portMAX_DELAY) != pdTRUE);
 
 	// CSMA
-	if (phy_mode() == PHYRX)
-		do {
-			while (rand() % 4096 >= 4096 * CSMA)
-				vTaskDelay(1);
-		} while (!phy_free());
+	while (phy_mode() == PHYTX)
+		vTaskDelay(10);
+
+	do {
+		while (rand() % 4096 >= 4096 * CSMA)
+			vTaskDelay(CSMA_TIME);
+	} while (!phy_free());
 
 	// Start transmission
 	uint8_t *ptr = frame.payload;
@@ -129,7 +132,11 @@ loop:
 				// Broadcast source address is invalid
 				if (buffer->src == MAC_BROADCAST)
 					goto loop;
-
+#if 0
+				// Not for this station
+				if (buffer->dest != MAC_BROADCAST && buffer->dest != mac_address())
+					goto loop;
+#endif
 				// Check checksum for frame corruption
 				// Higher byte in received checksum (little endian)
 				uint8_t ckh = *(ptr - 1);
@@ -148,7 +155,15 @@ loop:
 							status = WaitingHeader;
 							goto loop;
 						}
+					} else {
+#ifdef MAC_DEBUG
+						fputs_P(PSTR("\e[90mMAC-FAIL;"), stdout);
+#endif
 					}
+				} else {
+#ifdef MAC_DEBUG
+					fputs_P(PSTR("\e[93mDROP;"), stdout);
+#endif
 				}
 			} else
 				status = ReceivingData;
@@ -171,9 +186,11 @@ loop:
 			break;
 		}
 		checksum += *ptr++ = data;
+#if 1
 		if (size == 1)	// Destination address received
 			if (buffer->dest != mac_address() && buffer->dest != MAC_BROADCAST)
 				status = WaitingHeader;	// Not for this station
+#endif
 		break;
 	};
 	goto loop;
