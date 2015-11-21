@@ -17,7 +17,6 @@
 #include <task.h>
 
 static TaskHandle_t appTask, rxTask;
-static struct llc_packet_t pkt;
 
 // Task notify event bits
 #define EVNT_QUEUE_RX	0x00000001
@@ -34,44 +33,64 @@ ISR(USART0_RX_vect)
 		taskYIELD();
 }
 
-void test_rx_task(void *param)
+void app_rx_task(void *param)
 {
+	static struct llc_packet_t pkt;
 	puts_P(PSTR("\e[96mAPP RX task initialised."));
 
 loop:
-	// Get 1 frame from RX queue
-	while (xQueuePeek(llc_rx, &pkt, portMAX_DELAY) != pdTRUE);
-	// Tell APP to receive data
-	xTaskNotify(appTask, EVNT_QUEUE_RX, eSetBits);
-	// Waiting for APP receiving data
-	while (ulTaskNotifyTake(pdTRUE, portMAX_DELAY) == 0);
+	while (xQueueReceive(llc_rx, &pkt, 0) != pdTRUE);
+	uint8_t *ptr = pkt.payload;
+	uint8_t len = pkt.len;
+
+	uart0_lock();
+	printf_P(PSTR("\e[92mReceived from %02x, PRI %u: "), pkt.addr, pkt.pri);
+	while (len--) {
+		uint8_t c = *ptr++;
+		if (isprint(c))
+			putchar(c);
+		else
+			printf("\\x%02x", c);
+	}
+	putchar('\n');
+	uart0_unlock();
+	vPortFree(pkt.ptr);
+
 	goto loop;
 }
 
 void app_task(void *param)
 {
-	static char string[] = "Station ?, No ??????.";
+	static char string[] = "Station ?, No ??????. Hello, world! This is ELEC3222-A1 group. The DLL frame is 32 bytes maximum, but NET packet can be 128 bytes";
 	static uint8_t dest = MAC_BROADCAST, pri = DL_UNITDATA;
+	static char buffer[7];
 	uint8_t report = 0;
 	uint16_t count = 0;
 	uint32_t notify;
 	string[8] = mac_address();
 	// Enable UART0 RXC interrupt
 	uart0_interrupt_rxc(1);
-
 	printf_P(PSTR("\e[96mAPP task initialised (%02x), hello world!\n"), mac_address());
 
 poll:
 	// No event notify received
-	if (xTaskNotifyWait(0, ULONG_MAX, &notify, 10) != pdTRUE) {
+	if (xTaskNotifyWait(0, ULONG_MAX, &notify, 20) != pdTRUE) {
 		// Start transmission
 		if (!(PINC & _BV(2)) && llc_written()) {
-			sprintf(string + 8 + 6, "%6u.", count);
-			uint8_t status = llc_tx(pri, dest, sizeof(string), string);
+			sprintf(buffer, "%6u", count);
+			memcpy(string + 8 + 6, buffer, 6);
+			uint8_t len;
+			if (pri == DL_UNITDATA)
+				len = LLC_FRAME_MAX_SIZE - 3;
+			else
+				len = sizeof(string) > NET_PACKET_MAX_SIZE ? NET_PACKET_MAX_SIZE : sizeof(string);
+			uint8_t status = llc_tx(pri, dest, len, string);
 
+			uart0_lock();
 			printf_P(PSTR("\e[91mStation %02x, "), mac_address());
-			printf_P(PSTR("sent %u(PRI %u, %u bytes), "), count++, pri, sizeof(string));
+			printf_P(PSTR("sent %u(PRI %u, %u bytes), "), count++, pri, len);
 			printf_P(PSTR("status %u\n"), status);
+			uart0_unlock();
 		}
 
 		// Report memory usage
@@ -79,9 +98,11 @@ poll:
 			uint16_t total = configTOTAL_HEAP_SIZE;
 			uint16_t free = xPortGetFreeHeapSize();
 			uint16_t usage = (float)(total - free) * 100. / configTOTAL_HEAP_SIZE;
+			uart0_lock();
 			printf_P(PSTR("\e[97mReport: heap (free: %u, total: %u, usage: %u%%)\n"), free, total, usage);
+			uart0_unlock();
 		}
-		report = report == 99 ? 0 : report + 1;
+		report = report == 9 ? 0 : report + 1;
 		goto poll;
 	}
 
@@ -112,26 +133,6 @@ poll:
 			dest = (dest << 4) | num;
 	}
 
-	// Items in RX queue ready for receive
-	if (notify & EVNT_QUEUE_RX) {
-		while (xQueueReceive(llc_rx, &pkt, 0) == pdTRUE) {
-			uint8_t *ptr = pkt.payload;
-			uint8_t len = pkt.len;
-
-			printf_P(PSTR("\e[92mReceived from %02x, PRI %u: "), pkt.addr, pkt.pri);
-			while (len--) {
-				uint8_t c = *ptr++;
-				if (isprint(c))
-					putchar(c);
-				else
-					printf("\\x%02x", c);
-			}
-			vPortFree(pkt.ptr);
-			putchar('\n');
-		}
-		xTaskNotifyGive(rxTask);
-	}
-
 	goto poll;
 }
 
@@ -158,9 +159,8 @@ int main()
 {
 	init();
 
-	xTaskCreate(test_rx_task, "Test RX", configMINIMAL_STACK_SIZE, NULL, tskAPP_PRIORITY, &rxTask);
-	xTaskCreate(app_task, "APP task", 180, NULL, tskAPP_PRIORITY, &appTask);
-	while (rxTask == NULL || appTask == NULL);
+	while (xTaskCreate(app_rx_task, "APP RX", 160, NULL, tskAPP_PRIORITY, &rxTask) != pdPASS);
+	while (xTaskCreate(app_task, "APP task", 180, NULL, tskAPP_PRIORITY, &appTask) != pdPASS);
 
 	vTaskStartScheduler();
 	return 1;
