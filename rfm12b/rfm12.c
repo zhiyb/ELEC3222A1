@@ -392,7 +392,7 @@ void phy_init(void) {
 
 	// Initialise RTOS queue
 	rfm_rx = xQueueCreate(32, 1);
-	rfm_tx = xQueueCreate(8, 1);
+	rfm_tx = xQueueCreate(4, 1);
 	while (rfm_rx == 0 || rfm_tx == 0);
 
 	//write all the initialisation values to rfm12
