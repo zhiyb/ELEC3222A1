@@ -1,5 +1,6 @@
 #include <avr/pgmspace.h>
 #include <util/delay.h>
+#include <limits.h>
 #include <string.h>
 #include <stdlib.h>
 #include <stdio.h>
@@ -11,154 +12,327 @@
 #include <task.h>
 
 #define PACKET_MAX_SIZE		NET_PACKET_MAX_SIZE
-#define FRAME_DATA_MAX_SIZE	23
-#define APPEND_BYTES		5
+#define FRAME_MIN_SIZE		FRAME_APPEND_SIZE
+#define FRAME_MAX_SIZE		LLC_FRAME_MAX_SIZE
+#define FRAME_APPEND_SIZE	3
+#define FRAME_DATA_MAX_SIZE	(FRAME_MAX_SIZE - FRAME_APPEND_SIZE)
+// Power of 2
+#define ACN_CACHE_SIZE		8
 
-QueueHandle_t llc_tx, llc_rx;
-// ACK queue, item size 1 byte
+#define RETRY_TIME	10
+#define RETRY_COUNT	16
+
+QueueHandle_t llc_rx;
 static QueueHandle_t llc_ack;
 
 union ctrl_t {
-	uint8_t u;
+	uint8_t u8;
 	struct {
-		uint8_t last:1;		// Is last frame?
 		uint8_t ack:1;		// Is an ACK frame?
 		uint8_t ackreq:1;	// Is ACK required?
-		uint8_t pktid:5;	// Packet ID (for ACK)
+		uint8_t acn:1;		// AC0 / AC1
+		uint8_t last:1;		// Is last frame?
 	} s;
 };
 
-struct llc_frame
-{
+struct llc_frame_t {
 	union ctrl_t ctrl;
-	uint8_t seq;
-	uint8_t len;
-	uint8_t payload[LLC_FRAME_MAX_SIZE - APPEND_BYTES];
+	uint8_t seq;			// Frame sequence number
+	uint8_t len;			// Frame payload data length
+	uint8_t payload[0];
 };
 
-void llc_tx_task(void *param)
-{
-	static struct llc_packet pkt;
-	puts_P(PSTR("\e[96mLLC TX task initialised."));
-
-loop:
-	// Receive 1 packet to transmit from LLC queue
-	while (xQueueReceive(llc_tx, &pkt, portMAX_DELAY) != pdTRUE);
-
+struct llc_ack_t {
 	union ctrl_t ctrl;
+	uint8_t seq;
+	uint8_t addr;
+};
 
-	switch (pkt.pri) {
-	case DL_DATA_ACK_STATUS:	// ACK packet
-		ctrl.s.ack = 1;
-		break;
-	case DL_DATA_ACK:	// Packet requiring ACK
-		ctrl.s.ackreq = 1;
-	case DL_UNITDATA:	// Packet not requiring ACK
-		break;
-	}
+static struct llc_acn_t {
+	uint8_t addr;	// MAC address
+	uint8_t s, r;	// Sender, receiver
+	uint8_t seq;	// Received frame sequence
+	uint8_t *buffer;	// Data buffer
+	uint8_t size;	// Current data buffer size
+} acnCache[ACN_CACHE_SIZE];
+static uint8_t lastACN;
 
-	pktid = NEXT_PKTID(pktid);
-
-	goto loop;
+static void llc_acn_reset(struct llc_acn_t *acn)
+{
+	if (acn->addr != MAC_BROADCAST && acn->buffer)
+		vPortFree(acn->buffer);
+	acn->addr = MAC_BROADCAST;
+	acn->s = acn->r = 0;
+	acn->seq = 0xff;
+	acn->buffer = 0;
+	acn->size = 0;
 }
 
-void llc_rx_task(void *param)
+static struct llc_acn_t *llc_acn(uint8_t addr)
+{
+	struct llc_acn_t *acn;
+	uint8_t i, free = 0xff;
+	for (i = ACN_CACHE_SIZE; i != 0;) {
+		acn = acnCache + --i;
+		// Check free entry
+		if (free == 0xff && acn->addr == MAC_BROADCAST)
+			free = i;
+		if (acn->addr == addr)
+			return acn;
+	}
+
+	// No record
+	// If free entry recorded
+	if (free != 0xff)
+		acn = acnCache + free;
+	else {
+		acn = acnCache + lastACN;
+		lastACN = (lastACN - 1) & (ACN_CACHE_SIZE - 1);
+	}
+	llc_acn_reset(acn);
+	acn->addr = addr;
+	return acn;
+}
+
+static uint8_t llc_tx_frame(union ctrl_t ctrl, uint8_t seq, uint8_t addr, uint8_t len, uint8_t *data)
+{
+	// Generate LLC frame
+	static struct llc_frame_t *frame;
+	do
+		frame = pvPortMalloc(sizeof(struct llc_frame_t) + len);
+	while (frame == 0);
+	frame->ctrl = ctrl;
+	frame->seq = seq;
+	frame->len = len;
+	memcpy(frame->payload, data, len);
+
+	// Create struct to pass to MAC layer
+	static struct mac_frame mac;
+	mac.addr = addr;
+	mac.len = len + FRAME_APPEND_SIZE;
+	// Do not free the memory if ACK is required
+	mac.ptr = ctrl.s.ackreq ? NULL : (void *)frame;
+	mac.payload = (void *)frame;
+	xQueueReset(llc_ack);
+	while (xQueueSendToBack(mac_tx, &mac, 0) != pdTRUE);
+
+	if (ctrl.s.ackreq) {
+		uint8_t count = 0;
+		do {
+			// Waiting for acknowledge
+			struct llc_ack_t ack;
+			if (xQueueReceive(llc_ack, &ack, RETRY_TIME) != pdTRUE) {
+				// No ACK received, retry
+				while (xQueueSendToBack(mac_tx, &mac, 0) != pdTRUE);
+				count++;
+				continue;
+			}
+			if (ack.addr != addr || ack.seq != seq || ack.ctrl.s.acn != ctrl.s.acn)
+				continue;
+			vPortFree(frame);
+			return 1;
+		} while (count != RETRY_COUNT);
+		// No ACK received
+		vPortFree(frame);
+		return 0;
+	}
+	return 1;
+}
+
+uint8_t llc_tx(uint8_t pri, uint8_t addr, uint8_t len, void *ptr)
+{
+	uint8_t seq = 0;
+	union ctrl_t ctrl;
+	ctrl.u8 = 0;
+
+	struct llc_acn_t *acn = 0;
+	if (addr != MAC_BROADCAST) {
+		if (pri == DL_DATA_ACK)
+			ctrl.s.ackreq = 1;
+		acn = llc_acn(addr);
+		ctrl.s.acn = acn->s;
+		acn->s = 1 - acn->s;
+	}
+
+	// Split packet into multiple frames
+	while (len > FRAME_DATA_MAX_SIZE) {
+		// Write to buffer
+		if (!llc_tx_frame(ctrl, seq++, addr, FRAME_DATA_MAX_SIZE, ptr))
+			goto failed;
+		ptr += FRAME_DATA_MAX_SIZE;
+		len -= FRAME_DATA_MAX_SIZE;
+	}
+	// Write the last frame to buffer
+	ctrl.s.last = 1;
+	if (llc_tx_frame(ctrl, seq, addr, len, ptr))
+		return 1;
+
+failed:	// ackreq must be 1 to be here
+	// Reset ACn entry
+	llc_acn_reset(acn);
+	return 0;
+}
+
+static void llc_rx_task(void *param)
 {
 	static struct mac_frame data;
-	uint8_t seq = 0, *buffer = 0, *ptr = 0, size = 0;
 	puts_P(PSTR("\e[96mLLC RX task initialised."));
 
 loop:
 	// Receive 1 frame from MAC queue
 	while (xQueueReceive(mac_rx, &data, portMAX_DELAY) != pdTRUE);
-	struct llc_frame *frame = data.ptr;
 
-	// Data length check
-	if (frame->len > FRAME_DATA_MAX_SIZE || frame->len + APPEND_BYTES != data.len)
-		goto discard;
+	// Frame size check
+	if (data.len < FRAME_MIN_SIZE || data.len > FRAME_MAX_SIZE)
+		goto drop;
 
-	// Address routing check
-	if (frame->dest == MAC_BROADCAST) {
-		// Broadcasting packet
-		// Cannot ack broadcast frame
-		if (frame->ctrl.s.ackreq)
-			goto discard;
-	} else {
-		// Point-to-point packet
-		if (frame->dest != mac_address())
-			goto discard;
+	// Payload size check
+	struct llc_frame_t *frame = data.payload;
+	if (frame->len > FRAME_DATA_MAX_SIZE)
+		goto drop;
+
+	// This is an ACK frame
+	if (frame->ctrl.s.ack) {
+		struct llc_ack_t ack;
+		if (!uxQueueSpacesAvailable(llc_ack))
+			xQueueReceive(llc_ack, &ack, 0);
+		ack.ctrl = frame->ctrl;
+		ack.seq = frame->seq;
+		ack.addr = data.addr;
+		xQueueSendToBack(llc_ack, &ack, 0);
+		goto drop;
 	}
 
-	// Frame sequence check
-	if (frame->seq == 0 || frame->seq != seq) {
-		// Reset sequence index
-		seq = 0;
+	struct llc_acn_t *acn = llc_acn(data.addr);
+
+	// If this is a broadcast, or doesn't need ACK
+	if (data.addr == MAC_BROADCAST || frame->ctrl.s.ackreq == 0) {
+		// If the packet only have a single frame
+		if (frame->seq == 0 && frame->ctrl.s.last) {
+			struct llc_packet_t pkt;
+			pkt.pri = DL_UNITDATA;
+			pkt.addr = data.addr;
+			pkt.len = frame->len;
+			pkt.ptr = data.ptr;
+			pkt.payload = frame->payload;
+
+			// Send to upper layer
+			if (xQueueSendToBack(llc_rx, &pkt, 0) == pdTRUE)
+				goto loop;
+		}
+		goto drop;
+	}
+
+	// The packet need ACK
+	// If this is a new packet
+	if (frame->ctrl.s.acn != acn->r) {
+		// If this frame is out of sequence
 		if (frame->seq != 0)
-			goto discard;
-		// New packet
-		if (buffer == 0 && (buffer = pvPortMalloc(PACKET_MAX_SIZE)) == 0)
-			goto discard;
-		ptr = buffer;
-		size = 0;
-	}
+			goto drop;
 
-	// Packet buffer space check
-	if (size + frame->len > PACKET_MAX_SIZE) {
-		seq = 0;
-		goto discard;
-	}
+		// If this packet is carried by only a single frame
+		if (frame->ctrl.s.last) {
+			// If this frame is not empty
+			if (frame->len != 0) {
+				// Send to upper layer
+				uint8_t *buffer = pvPortMalloc(frame->len);
+				if (buffer == NULL)	// Insufficient RAM
+					goto drop;
+				memcpy(buffer, frame->payload, frame->len);
 
-	// Frame accepted, copy content
-	memcpy(ptr, frame->payload, frame->len);
-	size += frame->len;
+				struct llc_packet_t pkt;
+				pkt.pri = DL_DATA_ACK;
+				pkt.addr = data.addr;
+				pkt.len = frame->len;
+				pkt.ptr = buffer;
+				pkt.payload = buffer;
 
-	// Check for last frame
-	if (frame->ctrl.s.last) {
-		seq = 0;
-		if (frame->ctrl.s.ack) {
-			// Received frame is an ACK frame
-			uint8_t pktseq = *buffer;
-			xQueueSendToBack(llc_ack, &pktseq, 0);
-		} else {
-			// Push received data to rx queue
-			struct llc_packet pkt;
-			pkt.pri = frame->ctrl.s.ackreq ? DL_DATA_ACK : DL_UNITDATA;
-			pkt.addr = frame->src;
-			pkt.len = size;
-			pkt.ptr = buffer;
-			// If no space available in rx queue
-			if (xQueueSendToBack(llc_rx, &pkt, 0) != pdTRUE)
-				goto discard;
-
-			buffer = 0;
-			if (frame->ctrl.s.ackreq) {
-				// Push an ACK packet to tx queue
-				pkt.pri = DL_DATA_ACK_STATUS;
-				pkt.addr = frame->src;
-				pkt.len = frame->ctrl.s.pktid;
-				pkt.ptr = 0;
-				xQueueSendToBack(llc_tx, &pkt, 0);
+				// Unable to handle it at the moment
+				if (xQueueSendToBack(llc_rx, &pkt, 0) != pdTRUE) {
+					vPortFree(buffer);
+					goto drop;
+				}
 			}
+			acn->seq = 0xff;	// Mark as done
+		} else {
+			if (acn->buffer == NULL && (acn->buffer = pvPortMalloc(PACKET_MAX_SIZE)) == NULL)
+				goto drop;
+			memcpy(acn->buffer, frame->payload, frame->len);
+			acn->size = frame->len;
+			acn->seq = 0;
+		}
+
+		acn->r = frame->ctrl.s.acn;
+
+	// If this is a continuous frame
+	} else {
+		// If this frame is not duplicated
+		if (frame->seq != 0 && frame->seq != acn->seq) {
+			// If this frame is out of sequence
+			if (frame->seq != acn->seq + 1)
+				goto drop;
+
+			// If data buffer is insufficient
+			if (acn->size + frame->len > FRAME_DATA_MAX_SIZE)
+				goto drop;
+
+			memcpy(acn->buffer + acn->size, frame->payload, frame->len);
+			acn->size += frame->len;
+
+			// If this is the last frame
+			if (frame->ctrl.s.last) {
+				// If this packet is not empty
+				if (acn->size == 0) {
+					// Send to upper layer
+					struct llc_packet_t pkt;
+					pkt.pri = DL_DATA_ACK;
+					pkt.addr = data.addr;
+					pkt.len = acn->size;
+					pkt.ptr = acn->buffer;
+					pkt.payload = acn->buffer;
+
+					// Unable to handle it at the moment
+					if (xQueueSendToBack(llc_rx, &pkt, 0) != pdTRUE)
+						goto drop;
+
+					acn->buffer = 0;
+					acn->size = 0;
+				}
+				acn->seq = 0xff;	// Mark as done
+			} else
+				acn->seq++;
 		}
 	}
 
-discard:
-	vPortFree(data.ptr);
+	// Send ACK
+	// Change to ACK frame
+	frame->ctrl.s.ack = 1;
+	frame->len = 0;
 
+	// Send to MAC layer
+	data.len = FRAME_APPEND_SIZE;
+	while (xQueueSendToBack(mac_tx, &data, 0) != pdTRUE);
+	goto loop;
+
+drop:
+	if (data.ptr)
+		vPortFree(data.ptr);
 	goto loop;
 }
 
 uint8_t llc_written()
 {
-	return mac_written() && uxQueueMessagesWaiting(llc_tx) == 0;
+	return mac_written();
 }
 
 void llc_init()
 {
-	puts_P(PSTR("\e[96mLLC task setting up..."));
-	llc_tx = xQueueCreate(1, sizeof(struct llc_packet));
-	llc_rx = xQueueCreate(3, sizeof(struct llc_packet));
-	llc_ack = xQueueCreate(4, 1);
-	xTaskCreate(llc_tx_task, "LLC TX", 128, NULL, tskPROT_PRIORITY, NULL);
-	xTaskCreate(llc_rx_task, "LLC RX", 128, NULL, tskPROT_PRIORITY, NULL);
+	uint8_t i;
+	for (i = ACN_CACHE_SIZE; i != 0;)
+		acnCache[--i].addr = MAC_BROADCAST;
+	lastACN = ACN_CACHE_SIZE - 1;
+
+	llc_rx = xQueueCreate(2, sizeof(struct llc_packet_t));
+	llc_ack = xQueueCreate(2, sizeof(struct llc_ack_t));
+	while (xTaskCreate(llc_rx_task, "LLC RX", 180, NULL, tskPROT_PRIORITY, NULL) != pdPASS);
 }
