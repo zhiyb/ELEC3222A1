@@ -125,6 +125,11 @@ loop:
 		case FRAME_FOOTER:
 			if (size > FRAME_MIN_SIZE) {
 				status = FooterReceived;
+
+				// Broadcast source address is invalid
+				if (buffer->src == MAC_BROADCAST)
+					goto loop;
+
 				// Check checksum for frame corruption
 				// Higher byte in received checksum (little endian)
 				uint8_t ckh = *(ptr - 1);
@@ -137,11 +142,11 @@ loop:
 					frame.ptr = buffer;
 					frame.payload = buffer->payload;
 					// Send to upper layer
-					if (xQueueSendToBack(mac_rx, &frame, portMAX_DELAY) == pdTRUE) {
+					if (xQueueSendToBack(mac_rx, &frame, 0) == pdTRUE) {
 						buffer = pvPortMalloc(sizeof(struct mac_buffer_t));
 						if (buffer == 0) {
 							status = WaitingHeader;
-							break;
+							goto loop;
 						}
 					}
 				}
