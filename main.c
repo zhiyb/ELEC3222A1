@@ -88,8 +88,8 @@ poll:
 
 			uart0_lock();
 			printf_P(PSTR("\e[91mStation %02x, "), mac_address());
-			printf_P(PSTR("sent %u(PRI %u, %u bytes), "), count++, pri, len);
-			printf_P(PSTR("status %u\n"), status);
+			printf_P(PSTR("sent %u(PRI %u, DEST: %02x, SIZE: %u): "), count++, pri, dest, len);
+			puts_P(status ? PSTR("SUCCESS") : PSTR("FAILED"));
 			uart0_unlock();
 		}
 
