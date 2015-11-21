@@ -76,7 +76,8 @@ loop:
 		phy_tx(*ptr);
 		checksum += *ptr++;
 	}
-	vPortFree(frame.ptr);
+	if (frame.ptr)
+		vPortFree(frame.ptr);
 
 	// Transmit checksum
 	checksum = -checksum;
