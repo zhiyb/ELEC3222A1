@@ -298,7 +298,7 @@ loop:
 				//printf_P(PSTR("\e[93mLLC-S-OUT,%u,%u;"), frame->seq, acn->seq);
 #endif
 				// Ignore this packet
-				//acn->r = 1 - acn->r;
+				acn->r = 0xff;
 				goto drop;
 			}
 
