@@ -11,12 +11,13 @@
 #include <uart0.h>
 #include "phy_layer.h"
 #include "mac_layer.h"
+#include "llc_layer.h"
 #include "net_layer.h"
 
 #include <task.h>
 
 static TaskHandle_t appTask, rxTask;
-static struct mac_frame frame;
+static struct llc_packet_t pkt;
 
 // Task notify event bits
 #define EVNT_QUEUE_RX	0x00000001
@@ -39,7 +40,7 @@ void test_rx_task(void *param)
 
 loop:
 	// Get 1 frame from RX queue
-	while (xQueuePeek(mac_rx, &frame, portMAX_DELAY) != pdTRUE);
+	while (xQueuePeek(llc_rx, &pkt, portMAX_DELAY) != pdTRUE);
 	// Tell APP to receive data
 	xTaskNotify(appTask, EVNT_QUEUE_RX, eSetBits);
 	// Waiting for APP receiving data
@@ -49,8 +50,8 @@ loop:
 
 void app_task(void *param)
 {
-	static char string[] = "Station ?, No ??????: Hi!";
-	uint8_t dest = MAC_BROADCAST;
+	static char string[] = "Station ?, No ??????.";
+	static uint8_t dest = MAC_BROADCAST, pri = DL_UNITDATA;
 	uint8_t report = 0;
 	uint16_t count = 0;
 	uint32_t notify;
@@ -64,19 +65,20 @@ poll:
 	// No event notify received
 	if (xTaskNotifyWait(0, ULONG_MAX, &notify, 10) != pdTRUE) {
 		// Start transmission
-		if (!(PINC & _BV(2)) && mac_written()) {
-			sprintf(string + 8 + 6, "%6u: Hi!", count);
-			mac_write(dest, (void *)string, sizeof(string));
+		if (!(PINC & _BV(2)) && llc_written()) {
+			sprintf(string + 8 + 6, "%6u.", count);
+			uint8_t status = llc_tx(pri, dest, sizeof(string), string);
 
-			printf_P(PSTR("\e[91mStation %02x, sent %u(%u bytes)\n"), mac_address(), count++, sizeof(string));
+			printf_P(PSTR("\e[91mStation %02x, "), mac_address());
+			printf_P(PSTR("sent %u(PRI %u, %u bytes), "), count++, pri, sizeof(string));
+			printf_P(PSTR("status %u\n"), status);
 		}
 
 		// Report memory usage
 		if (report == 0) {
 			uint16_t total = configTOTAL_HEAP_SIZE;
 			uint16_t free = xPortGetFreeHeapSize();
-			uint16_t used = total - free;
-			uint16_t usage = (float)used * 100. / configTOTAL_HEAP_SIZE;
+			uint16_t usage = (float)(total - free) * 100. / configTOTAL_HEAP_SIZE;
 			printf_P(PSTR("\e[97mReport: heap (free: %u, total: %u, usage: %u%%)\n"), free, total, usage);
 		}
 		report = report == 99 ? 0 : report + 1;
@@ -100,6 +102,10 @@ poll:
 		case 'a' ... 'f':
 			num = c - 'a' + 10;
 			break;
+		case 'p':
+		case 'P':
+			pri = pri == DL_UNITDATA ? DL_DATA_ACK : DL_UNITDATA;
+			break;
 		}
 		// Update destination address
 		if (num != 0xff)
@@ -108,11 +114,11 @@ poll:
 
 	// Items in RX queue ready for receive
 	if (notify & EVNT_QUEUE_RX) {
-		while (xQueueReceive(mac_rx, &frame, 0) == pdTRUE) {
-			uint8_t *ptr = frame.payload;
-			uint8_t len = frame.len;
+		while (xQueueReceive(llc_rx, &pkt, 0) == pdTRUE) {
+			uint8_t *ptr = pkt.payload;
+			uint8_t len = pkt.len;
 
-			printf_P(PSTR("\e[92mReceived from %02x: "), frame.addr);
+			printf_P(PSTR("\e[92mReceived from %02x, PRI %u: "), pkt.addr, pkt.pri);
 			while (len--) {
 				uint8_t c = *ptr++;
 				if (isprint(c))
@@ -120,7 +126,7 @@ poll:
 				else
 					printf("\\x%02x", c);
 			}
-			vPortFree(frame.ptr);
+			vPortFree(pkt.ptr);
 			putchar('\n');
 		}
 		xTaskNotifyGive(rxTask);
@@ -144,6 +150,7 @@ void init()
 
 	phy_init();
 	mac_init();
+	llc_init();
 	sei();
 }
 
