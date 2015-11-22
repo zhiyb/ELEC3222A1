@@ -10,6 +10,7 @@
 #include "phy_layer.h"
 
 #include <task.h>
+#include <semphr.h>
 
 #define CSMA		(0.1)
 #define CSMA_TIME	5
@@ -24,7 +25,8 @@
 #define FRAME_MAX_SIZE		(32 - 2)
 
 static EEMEM uint8_t NVAddress = ADDRESS;
-QueueHandle_t mac_tx, mac_rx;
+static SemaphoreHandle_t mac_semaphore;
+QueueHandle_t mac_rx;
 
 enum Status {WaitingHeader = 0, ReceivingData, ReceivingEscaped, FooterReceived};
 static uint8_t status = WaitingHeader, mac_addr = MAC_BROADCAST;
@@ -35,18 +37,23 @@ struct mac_buffer_t {
 	uint8_t payload[FRAME_MAX_SIZE - 2];
 };
 
-void mac_tx_task(void *param)
+// Transmit 1 byte though PHY, escaping if necessary
+static void mac_tx_data(uint8_t data)
 {
-	static struct mac_frame frame;
-	puts_P(PSTR("\e[96mMAC TX task initialised."));
+	// If escaping required
+	if (data == FRAME_HEADER || data == FRAME_FOOTER)
+		phy_tx(FRAME_ESCAPE);
+	phy_tx(data);
+}
 
-loop:
-	// Receive 1 frame from queue
-	while (xQueueReceive(mac_tx, &frame, portMAX_DELAY) != pdTRUE);
+void mac_tx(uint8_t addr, void *data, uint8_t len)
+{
+	// Thread safe: lock mutex
+	while (xSemaphoreTake(mac_semaphore, portMAX_DELAY) != pdTRUE);
 
 	// CSMA
 	while (phy_mode() == PHYTX)
-		vTaskDelay(10);
+		vTaskDelay(CSMA_TIME);
 
 	do {
 		while (rand() % 4096 >= 4096 * CSMA)
@@ -54,7 +61,7 @@ loop:
 	} while (!phy_free());
 
 	// Start transmission
-	uint8_t *ptr = frame.payload;
+	uint8_t *ptr = data;
 
 	// Transmit header
 	phy_tx(FRAME_HEADER);
@@ -62,35 +69,31 @@ loop:
 
 	// Transmit address
 	// Destination address
-	phy_tx(frame.addr);
-	checksum += frame.addr;
+	mac_tx_data(addr);
+	checksum += addr;
 	// Source (self) address
 	uint8_t tmp = mac_address();
-	phy_tx(tmp);
+	mac_tx_data(tmp);
 	checksum += tmp;
 
 	// Transmit payload data
-	tmp = frame.len;
+	tmp = len;
 	while (tmp--) {
-		if (*ptr == FRAME_HEADER || *ptr == FRAME_FOOTER) {
-			// An escape byte required
-			phy_tx(FRAME_ESCAPE);
-		}
-		phy_tx(*ptr);
+		mac_tx_data(*ptr);
 		checksum += *ptr++;
 	}
-	if (frame.ptr)
-		vPortFree(frame.ptr);
 
 	// Transmit checksum
 	checksum = -checksum;
 	ptr = (uint8_t *)&checksum;
-	phy_tx(*ptr++);
-	phy_tx(*ptr);
+	mac_tx_data(*ptr++);
+	mac_tx_data(*ptr);
 
 	// Transmit footer
 	phy_tx(FRAME_FOOTER);
-	goto loop;
+
+	// Thread-safe: unlock mutex
+	xSemaphoreGive(mac_semaphore);
 }
 
 void mac_rx_task(void *param)
@@ -104,10 +107,26 @@ void mac_rx_task(void *param)
 loop:
 	// Receive 1 byte data from PHY
 	data = phy_rx();
+#if MAC_DEBUG > 2
+	fputs_P(PSTR("\e[90m"), stdout);
+	if (data == FRAME_HEADER)
+		putchar('^');
+	else if (data == FRAME_ESCAPE)
+		putchar('\\');
+	else if (isprint(data))
+		putchar(data);
+	else
+		putchar('.');
+	putchar(';');
+#endif
+
 	switch (status) {
 	case WaitingHeader:
 		if (data != FRAME_HEADER) {
 			phy_receive();	// Reset receiver
+#if MAC_DEBUG > 1
+			fputs_P(PSTR("\e[90mMAC-RST;"), stdout);
+#endif
 			break;
 		}
 
@@ -150,23 +169,33 @@ loop:
 					frame.payload = buffer->payload;
 					// Send to upper layer
 					if (xQueueSendToBack(mac_rx, &frame, 0) == pdTRUE) {
+#if MAC_DEBUG > 1
+						fputs_P(PSTR("\e[90mMAC-RECV;"), stdout);
+#endif
 						buffer = pvPortMalloc(sizeof(struct mac_buffer_t));
 						if (buffer == 0) {
 							status = WaitingHeader;
+#if MAC_DEBUG >= 0
+							fputs_P(PSTR("\e[90mMAC-B-FAIL;"), stdout);
+#endif
 							goto loop;
 						}
 					} else {
-#ifdef MAC_DEBUG
-						fputs_P(PSTR("\e[90mMAC-FAIL;"), stdout);
+#if MAC_DEBUG >= 0
+						fputs_P(PSTR("\e[90mMAC-Q-FAIL;"), stdout);
 #endif
 					}
 				} else {
-#ifdef MAC_DEBUG
+#if MAC_DEBUG > 0
 					fputs_P(PSTR("\e[93mDROP;"), stdout);
 #endif
 				}
-			} else
+			} else {
 				status = ReceivingData;
+#if MAC_DEBUG > 1
+				fputs_P(PSTR("\e[90mMAC-RESET;"), stdout);
+#endif
+			}
 
 			// Reset
 			ptr = (uint8_t *)buffer;
@@ -188,32 +217,21 @@ loop:
 		checksum += *ptr++ = data;
 #if 1
 		if (size == 1)	// Destination address received
-			if (buffer->dest != mac_address() && buffer->dest != MAC_BROADCAST)
+			if (buffer->dest != mac_address() && buffer->dest != MAC_BROADCAST) {
 				status = WaitingHeader;	// Not for this station
+#if MAC_DEBUG > 1
+				fputs_P(PSTR("\e[90mMAC-SKIP;"), stdout);
+#endif
+			}
 #endif
 		break;
 	};
 	goto loop;
 }
 
-void mac_write(uint8_t addr, void *data, uint8_t length)
-{
-	uint8_t *ptr;
-	while ((ptr = pvPortMalloc(length)) == 0)
-		puts_P(PSTR("malloc failed!"));
-	memcpy(ptr, data, length);//(destination, source, number)
-	struct mac_frame item;
-	item.addr = addr;
-	item.len = length;
-	item.ptr = ptr;
-	item.payload = ptr;
-	while (xQueueSendToBack(mac_tx, &item, portMAX_DELAY) != pdTRUE);
-	/////////////////(xQueue, pvItemtoQueue, xTicketsToWait)
-}
-
 uint8_t mac_written()
 {
-	return phy_mode() == PHYRX && uxQueueMessagesWaiting(mac_tx) == 0;
+	return phy_mode() == PHYRX;
 }
 
 uint8_t mac_address_update(uint8_t addr)
@@ -235,9 +253,7 @@ uint8_t mac_address()
 
 void mac_init()
 {
-	puts_P(PSTR("\e[96mMAC task setting up..."));
-	mac_tx = xQueueCreate(1, sizeof(struct mac_frame));
 	mac_rx = xQueueCreate(2, sizeof(struct mac_frame));
-	xTaskCreate(mac_tx_task, "MAC TX", configMINIMAL_STACK_SIZE, NULL, tskPROT_PRIORITY, NULL);
-	xTaskCreate(mac_rx_task, "MAC RX", configMINIMAL_STACK_SIZE, NULL, tskPROT_PRIORITY, NULL);
+	while ((mac_semaphore = xSemaphoreCreateMutex()) == NULL);
+	while (xTaskCreate(mac_rx_task, "MAC RX", configMINIMAL_STACK_SIZE, NULL, tskPROT_PRIORITY, NULL) != pdPASS);
 }
