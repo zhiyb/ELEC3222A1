@@ -41,7 +41,7 @@ struct mac_buffer_t {
 static void mac_tx_data(uint8_t data)
 {
 	// If escaping required
-	if (data == FRAME_HEADER || data == FRAME_FOOTER)
+	if (data == FRAME_HEADER || data == FRAME_FOOTER || data == FRAME_ESCAPE)
 		phy_tx(FRAME_ESCAPE);
 	phy_tx(data);
 }
