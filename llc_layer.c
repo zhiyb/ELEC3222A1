@@ -10,6 +10,7 @@
 #include "mac_layer.h"
 
 #include <task.h>
+#include <semphr.h>
 
 #define PACKET_MAX_SIZE		NET_PACKET_MAX_SIZE
 #define FRAME_MIN_SIZE		FRAME_APPEND_SIZE
@@ -19,11 +20,16 @@
 // Power of 2
 #define ACN_CACHE_SIZE		8
 
-#define RETRY_TIME	250
-#define RETRY_COUNT	16
+#define RETRY_TIME	300
+#define RETRY_COUNT	8
+
+#undef LLC_MUTEX
 
 QueueHandle_t llc_rx;
 static QueueHandle_t llc_ack;
+#ifdef LLC_MUTEX
+static SemaphoreHandle_t llc_semaphore;
+#endif
 
 union ctrl_t {
 	uint8_t u8;
@@ -107,15 +113,10 @@ static uint8_t llc_tx_frame(union ctrl_t ctrl, uint8_t seq, uint8_t addr, uint8_
 	frame->len = len;
 	memcpy(frame->payload, data, len);
 
-	// Create struct to pass to MAC layer
-	static struct mac_frame mac;
-	mac.addr = addr;
-	mac.len = len + FRAME_APPEND_SIZE;
-	// Do not free the memory if ACK is required
-	mac.ptr = ctrl.s.ackreq ? NULL : (void *)frame;
-	mac.payload = (void *)frame;
+	// Send to MAC layer
 	xQueueReset(llc_ack);
-	while (xQueueSendToBack(mac_tx, &mac, 0) != pdTRUE);
+	len += FRAME_APPEND_SIZE;
+	mac_tx(addr, frame, len);
 
 	if (ctrl.s.ackreq) {
 		uint8_t count = 0;
@@ -126,9 +127,9 @@ static uint8_t llc_tx_frame(union ctrl_t ctrl, uint8_t seq, uint8_t addr, uint8_
 				vTaskDelay(1);
 			if (xQueueReceive(llc_ack, &ack, RETRY_TIME) != pdTRUE) {
 				// No ACK received, retry
-				while (xQueueSendToBack(mac_tx, &mac, 0) != pdTRUE);
+				mac_tx(addr, frame, len);
 				count++;
-#ifdef LLC_DEBUG
+#if LLC_DEBUG > 0
 				printf_P(PSTR("\e[95mRetry %u..."), count);
 #endif
 				continue;
@@ -142,6 +143,7 @@ static uint8_t llc_tx_frame(union ctrl_t ctrl, uint8_t seq, uint8_t addr, uint8_
 		vPortFree(frame);
 		return 0;
 	}
+	vPortFree(frame);
 	return 1;
 }
 
@@ -153,11 +155,19 @@ uint8_t llc_tx(uint8_t pri, uint8_t addr, uint8_t len, void *ptr)
 
 	struct llc_acn_t *acn = 0;
 	if (addr != MAC_BROADCAST) {
-		if (pri == DL_DATA_ACK)
+		if (pri == DL_DATA_ACK) {
+#ifdef LLC_MUTEX
+			// Thread safe: prevent acn->s accessed by multiple thread
+			while (xSemaphoreTake(llc_semaphore, portMAX_DELAY) != pdTRUE);
+#endif
 			ctrl.s.ackreq = 1;
-		acn = llc_acn(addr);
-		ctrl.s.acn = acn->s;
-		acn->s = !acn->s;
+			acn = llc_acn(addr);
+			ctrl.s.acn = acn->s;
+			acn->s = !acn->s;
+#if LLC_DEBUG > 1
+			printf_P(PSTR("\e[94mLLC-PKT,%u;"), acn->s);
+#endif
+		}
 	}
 
 	// Split packet into multiple frames
@@ -170,12 +180,20 @@ uint8_t llc_tx(uint8_t pri, uint8_t addr, uint8_t len, void *ptr)
 	}
 	// Write the last frame to buffer
 	ctrl.s.last = 1;
-	if (llc_tx_frame(ctrl, seq, addr, len, ptr))
+	if (llc_tx_frame(ctrl, seq, addr, len, ptr)) {
+#ifdef LLC_MUTEX
+		if (ctrl.s.ackreq)
+			xSemaphoreGive(llc_semaphore);
+#endif
 		return 1;
+	}
 
 failed:	// ackreq must be 1 to be here
 	// Reset ACn entry
 	//llc_acn_reset(acn);
+#ifdef LLC_MUTEX
+	xSemaphoreGive(llc_semaphore);
+#endif
 	return 0;
 }
 
@@ -202,7 +220,7 @@ loop:
 		struct llc_ack_t ack;
 		if (!uxQueueSpacesAvailable(llc_ack)) {
 			xQueueReceive(llc_ack, &ack, 0);
-#ifdef LLC_DEBUG
+#if LLC_DEBUG >= 0
 			fputs_P(PSTR("\e[90mLLC-A-FAIL;"), stdout);
 #endif
 		}
@@ -210,7 +228,7 @@ loop:
 		ack.seq = frame->seq;
 		ack.addr = data.addr;
 		xQueueSendToBack(llc_ack, &ack, 0);
-#ifdef LLC_DEBUG
+#if LLC_DEBUG > 0
 		fputs_P(PSTR("\e[94mACK;"), stdout);
 #endif
 		goto drop;
@@ -237,12 +255,17 @@ loop:
 	// The packet need ACK
 	struct llc_acn_t *acn = llc_acn(data.addr);
 
+#if LLC_DEBUG > 1
+	printf_P(PSTR("\e[93mLLC-FRAME,%u/%u,%u/%u;"), frame->ctrl.s.acn, acn->r, frame->seq, acn->seq);
+#endif
+
 	// If this is a new packet
 	if (frame->ctrl.s.acn != acn->r) {
 		// If this frame is out of sequence
 		if (frame->seq != 0) {
-#ifdef LLC_DEBUG
-			fputs_P(PSTR("\e[93mLLC-N-OUT;"), stdout);
+#if LLC_DEBUG > 0
+			//fputs_P(PSTR("\e[93mLLC-N-OUT;"), stdout);
+			printf_P(PSTR("\e[93mLLC-N-OUT,%u,%u;"), frame->seq, acn->seq);
 #endif
 			goto drop;
 		}
@@ -266,7 +289,7 @@ loop:
 
 				// Unable to handle it at the moment
 				if (xQueueSendToBack(llc_rx, &pkt, 0) != pdTRUE) {
-#ifdef LLC_DEBUG
+#if LLC_DEBUG >= 0
 					fputs_P(PSTR("\e[90mLLC-S-FAIL;"), stdout);
 #endif
 					vPortFree(buffer);
@@ -293,9 +316,9 @@ loop:
 		if (frame->seq != 0 && frame->seq != acn->seq) {
 			// If this frame is out of sequence
 			if (frame->seq != acn->seq + 1) {
-#ifdef LLC_DEBUG
-				fputs_P(PSTR("\e[93mLLC-S-OUT;"), stdout);
-				//printf_P(PSTR("\e[93mLLC-S-OUT,%u,%u;"), frame->seq, acn->seq);
+#if LLC_DEBUG > 0
+				//fputs_P(PSTR("\e[93mLLC-S-OUT;"), stdout);
+				printf_P(PSTR("\e[93mLLC-S-OUT,%u,%u;"), frame->seq, acn->seq);
 #endif
 				// Ignore this packet
 				acn->r = 0xff;
@@ -304,7 +327,7 @@ loop:
 
 			// If data buffer is insufficient
 			if (acn->size + frame->len > PACKET_MAX_SIZE) {
-#ifdef LLC_DEBUG
+#if LLC_DEBUG >= 0
 				fputs_P(PSTR("\e[90mLLC-B-FAIL;"), stdout);
 #endif
 				goto drop;
@@ -332,7 +355,7 @@ loop:
 
 					// Unable to handle it at the moment
 					if (xQueueSendToBack(llc_rx, &pkt, 0) != pdTRUE) {
-#ifdef LLC_DEBUG
+#if LLC_DEBUG >= 0
 						fputs_P(PSTR("\e[90mLLC-M-FAIL;"), stdout);
 #endif
 						goto drop;
@@ -352,8 +375,12 @@ loop:
 	frame->len = 0;
 
 	// Send to MAC layer
-	data.len = FRAME_APPEND_SIZE;
-	while (xQueueSendToBack(mac_tx, &data, 0) != pdTRUE);
+	mac_tx(data.addr, frame, FRAME_APPEND_SIZE);
+	vPortFree(data.ptr);
+
+#if LLC_DEBUG > 1
+	fputs_P(PSTR("\e[93mACK;"), stdout);
+#endif
 	goto loop;
 
 drop:
@@ -374,7 +401,14 @@ void llc_init()
 		acnCache[--i].addr = MAC_BROADCAST;
 	lastACN = ACN_CACHE_SIZE - 1;
 
-	llc_rx = xQueueCreate(2, sizeof(struct llc_packet_t));
-	llc_ack = xQueueCreate(2, sizeof(struct llc_ack_t));
+	while ((llc_rx = xQueueCreate(2, sizeof(struct llc_packet_t))) == NULL);
+	while ((llc_ack = xQueueCreate(2, sizeof(struct llc_ack_t))) == NULL);
+#ifdef LLC_MUTEX
+	while ((llc_semaphore = xSemaphoreCreateMutex()) == NULL);
+#endif
+#if LLC_DEBUG > 0
+	while (xTaskCreate(llc_rx_task, "LLC RX", 160, NULL, tskPROT_PRIORITY, NULL) != pdPASS);
+#else
 	while (xTaskCreate(llc_rx_task, "LLC RX", configMINIMAL_STACK_SIZE, NULL, tskPROT_PRIORITY, NULL) != pdPASS);
+#endif
 }
