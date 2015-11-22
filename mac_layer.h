@@ -33,11 +33,12 @@ struct mac_frame {
 
 // RTOS queue for frame transmission & reception
 // Queue item size: mac_frame
-extern QueueHandle_t mac_tx, mac_rx;
+extern QueueHandle_t mac_rx;
 
+// Transmit through MAC layer
+// Thread-safe
+void mac_tx(uint8_t addr, void *data, uint8_t len);
 uint8_t mac_written();
-// Copy data to tx queue
-void mac_write(uint8_t addr, void *data, uint8_t length);
 // MAC address
 uint8_t mac_address();
 // Set MAC address
