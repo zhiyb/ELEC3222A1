@@ -10,11 +10,6 @@ extern "C" {
 #include <avr/io.h>
 #include <stdio.h>
 
-// RTOS
-#include <FreeRTOSConfig.h>
-#include <FreeRTOS.h>
-#include <semphr.h>
-
 // Initialise UART 0
 void uart0_init();
 
