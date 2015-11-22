@@ -248,7 +248,11 @@ ISR(RFM12_INT_VECT)
 			case PHYRX:	// Receiving
 				{
 					uint8_t data = rfm12_read(RFM12_CMD_READ);
-					xQueueSendToBackFromISR(rfm_rx, &data, &xTaskWoken);
+					if (xQueueSendToBackFromISR(rfm_rx, &data, &xTaskWoken) != pdPASS) {
+#if PHY_DEBUG >= 0
+						fputs_P(PSTR("\e[90mPHY-RX-FAIL;"), stdout);
+#endif
+					}
 #if 0
 					if (isprint(data))
 						putchar(data);
@@ -391,8 +395,8 @@ void phy_init(void) {
 	rfm_mode = PHYRX;
 
 	// Initialise RTOS queue
-	rfm_rx = xQueueCreate(32, 1);
-	rfm_tx = xQueueCreate(4, 1);
+	rfm_rx = xQueueCreate(16, 1);
+	rfm_tx = xQueueCreate(8, 1);
 	while (rfm_rx == 0 || rfm_tx == 0);
 
 	//write all the initialisation values to rfm12
