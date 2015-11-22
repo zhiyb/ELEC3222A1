@@ -1,3 +1,5 @@
 #SRC	+= phy_layer.c
 SUBDIRS	+= rfm12b
 INCDIRS	+= .
+
+DEFS	+= -DPHY_DEBUG=0
