@@ -2,6 +2,11 @@
 #include <avr/interrupt.h>
 #include "uart0.h"
 
+// RTOS
+#include <FreeRTOSConfig.h>
+#include <FreeRTOS.h>
+#include <semphr.h>
+
 static SemaphoreHandle_t uart0_semaphore;
 
 void uart0_init()
@@ -19,8 +24,7 @@ void uart0_init()
 	UCSR0B = _BV(RXEN0) | _BV(TXEN0);
 	UCSR0C = _BV(UCSZ00) | _BV(UCSZ01);
 
-	uart0_semaphore = xSemaphoreCreateMutex();
-	while (uart0_semaphore == NULL);
+	while ((uart0_semaphore = xSemaphoreCreateMutex()) == NULL);
 }
 
 void uart0_interrupt_rxc(uint8_t e)
