@@ -35,6 +35,29 @@ static union net_buffer{
 
 #define Checksum(st) ((unit16_t * )((st).s.data + (st).s.length))
 
+uint8_t IP;
+void Find_MAC(IP){
+	uint8_t MAC[255];
+	int i 
+	for(i=0; i<255; i++)
+	{
+		MAC[i] = 0xFF; //initialise the array with invalid MAC address 0xFF: broadcast address
+	}
+		return MAC[IP];
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 void net_write(const uint8_t *packet, uint8_t length)
 {
