@@ -402,7 +402,7 @@ void llc_init()
 	lastACN = ACN_CACHE_SIZE - 1;
 
 	while ((llc_rx = xQueueCreate(2, sizeof(struct llc_packet_t))) == NULL);
-	while ((llc_ack = xQueueCreate(2, sizeof(struct llc_ack_t))) == NULL);
+	while ((llc_ack = xQueueCreate(2, sizeof(struct llc_ack_t))) == NULL); //create queue for ack
 #ifdef LLC_MUTEX
 	while ((llc_semaphore = xSemaphoreCreateMutex()) == NULL);
 #endif
