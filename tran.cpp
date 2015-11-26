@@ -8,7 +8,7 @@
 
 #define STRUCT_SIZE 7
 #define DATA_SIZE 114
-#define PORT 1
+#define LISTEN_PORT 1
 char *str;
 uint8_t len;
 struct package{
@@ -18,18 +18,14 @@ struct package{
 	uint8_t length;
 	uint8_t app_data[DATA_SIZE];
 	uint16_t checksum;
-} pck;
+};
 
-struct tran_fram{
+struct tran_frame{
 	uint8_t tran_len;
+	uint8_t ip;
 	struct package *tem;
-} tf;
+} ;
 
-struct socket{
-	uint16_t address;
-	uint16_t port;
-	uint16_t frame;
-} soc;
 
 void trans(void)
 {
@@ -46,7 +42,7 @@ void get_soc(struct socket *a)
 	soc = *a;
 }
 
-void pack(void)
+void pack(struct package pck)
 {
 	pck.src_port = PORT;
 	pck.dest_port = soc.dest_port;
@@ -107,14 +103,16 @@ void sync_len(uint8_t a)
 }
 void tran_tx_task(void *param)
 {
+	struct package pck;
+	struct tran_frame tf;
 	static struct package pkg;
 	printf("TX task init");
 loop:
 	while (xQueueReceive(tran_tx, str, portMAX_DELAY) != pdTRUE);
 	if(len == 0)
 		goto loop;
-	get_soc();
-	pack();
+//	get_soc();
+	pack(pck);
 	uint8_t data_len = len + STRUCT_SIZE;
 	tf.tran_len = data_len;
 	tf.tem = &pck;
@@ -126,22 +124,46 @@ loop:
 }
 void tran_rx_task(void *param)
 {
-	uint8_t *buffer = 0;
+	uint8_t src_addr;
+	uint8_t *buffer;
 	uint8_t *data;
+	struct tran_frame *tf;
+	struct package pck;
+	uint8_t i;
 loop: 
-	while(xQueueReceive(net_rx, data, portMAX_DELAY) != pdTRUE);
-	tf = *data;
-	pck = *tf.tem;
-	
-		//sendtoapp();
-		while(xQueueSendToBack(tran_rx, pck, portMAX_DELAY) != pdTRUE);
-	
+	while(xQueueReceive(net_rx, buffer, portMAX_DELAY) != pdTRUE);
+	tf = buffer;
+	&pck = tf->tem;
+	/*if(pck.dest_port == LISTEN_PORT)
+	{	
+		src_addr = tf->ip;
+		for(i = 0; i != MAX_SOCKETS; i++)
+		{
+			if((sockets[i].status == SOCKET_ACTIVE) && (sockets[i].type == SOCKET_LISTEN))
+			{
+				if(src_addr == sockets[i].address)
+				{
+					while(xQueueSendToBack(sockets[i].queue, pck, portMAX_DELAY) != pdTRUE);
+				}
+			}
+		}
+	}*/
+	if(pck.dest_port == LISTEN_PORT_UDP)
+	{
+		src_addr = tf->ip;
+		if((sockets[i].status == SOCKET_ACTIVE) && (sockets[i].type == SOCKET_DATAGRAM))
+		{
+			for(i = 0; i != MAX_SOCKETS; i++)
+			{
+				if(src_addr == sockets[i].address)
+				{
+					while(xQueueSendToBack(sockets[i].queue, pck, portMAX_DELAY) != pdTRUE);
+				}
+			}
+		}
+	}
+
 	goto loop;
 }
 
-void listen(uint8_t port)
-{
 
-}
-
-void 

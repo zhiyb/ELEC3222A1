@@ -15,7 +15,7 @@ extern "C" {
 #define MAX_SOCKETS	16
 
 enum SocketStatus {SOCKET_ALLOCATED = 0, SOCKET_ACTIVE = 1, SOCKET_FREE = 0xff};
-enum SocketTypes {SOCKET_LISTEN = 0, SOCKET_CONNECTION = 1};
+enum SocketTypes {SOCKET_LISTEN = 0, SOCKET_CONNECTION = 1, SOCKET_DATAGRAM = 2};
 
 struct socket_t {
 	uint16_t address;

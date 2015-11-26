@@ -18,7 +18,7 @@ void listen(uint8_t sid, uint16_t port)
 	(*sptr).type = SOCKET_LISTEN;
 	sptr->port = port;
 	sptr->status = SOCKET_ACTIVE;
-	
+ 	sptr->queue = xQueue	
 }
 
 // Accept a pending new connection
@@ -34,8 +34,13 @@ uint8_t accept(uint8_t sid)
 // Read from socket buffer
 uint8_t read(uint8_t sid, uint8_t *buffer, uint8_t len)
 {
-	while(xQueueReceive(tran_rx, buffer, portMAX_DELAY) != pdTRUE);
-	len = *buffer;
-	buffer++;
+	uint8_t i;
+	struct socket_t *sptr = sockets + sid;
+	for(i = 0; i != len; i++)
+	{
+		while(xQueueReceive(sptr->queue, buffer, portMAX_DELAY) != pdTRUE);
+		buffer ++;
+	}	//len = *buffer;
+	//buffer++;
 	return len;
 }
