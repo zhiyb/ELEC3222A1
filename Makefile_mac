@@ -1,0 +1,6 @@
+SRC	+= mac_layer.c
+
+ADDRESS	?= 0
+
+DEFS	+= -DADDRESS=$(ADDRESS)
+DEFS	+= -DMAC_DEBUG=0
