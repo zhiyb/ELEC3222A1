@@ -121,9 +121,11 @@ loop:
 	uint8_t addr = pkt.addr; //source mac address
 	uint8_t pri = pkt.pri; // request type
 	void *null; 
-
+	uint8_t sender_IP = ptr.SRC_address;
+	struct net_buffer *reply;
+	reply.SRC_address = /*function to generate mac address in mac.c*/
 	if(pri == REQ){ //if it is a request, send the ACK back to sender
-		llc_tx(ACK, addr = 0, len = 0, ptr = null);
+		llc_tx(ACK, addr = sender_IP, len = 0, ptr = reply);
 		MAC_uptate(ptr.SRC_address, addr);
 	}
 	else if(pri == ACK){
