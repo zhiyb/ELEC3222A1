@@ -27,7 +27,7 @@ enum LLC_Primitives {DL_UNITDATA = 0, DL_DATA_ACK};
 // Data transfer between LLC and upper layer
 struct llc_packet_t {
 	uint8_t pri;	// LLC_Primitives
-	uint8_t addr;	// Destination MAC address
+	uint8_t addr;	// RX: The MAC address of the sending host
 	uint8_t len;	// Data length
 	void *ptr;	// Pointer to frame data on heap (free after use)
 	void *payload;	// Pointer to payload field
