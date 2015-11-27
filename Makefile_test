@@ -1,5 +1,4 @@
-SRC	+= main.c
-SRC	+= phy_layer_i2c.c
+#SRC	+= main.c
 SUBDIRS	+= uart0
 
 # 1.5Mbps
