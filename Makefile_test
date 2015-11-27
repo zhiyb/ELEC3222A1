@@ -1,0 +1,4 @@
+SRC	+= main.c
+SUBDIRS	+= uart0
+
+DEFS	+= -DUART0_BAUD=1500000
