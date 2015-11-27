@@ -1,5 +1,0 @@
-#SRC	+= main.c
-SUBDIRS	+= uart0
-
-# 1.5Mbps
-DEFS	+= -DUART0_BAUD=1500000
