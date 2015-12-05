@@ -106,7 +106,7 @@ void net_tx(const uint8_t *packet, uint8_t address){ //requrie whole package and
 		tx.SRC_address = net_addr ; //need to know the address 
 		tx.DEST_Address = address ;
 		tx.Length = ; //length of whole package = 7 + sizeof(TRAM_Segment)
-		llc_tx(pri = DL_UNITDATA, addr = MAC_BROADCAST , len = sizeof(tx) , *ptr = tx);//broadcast request
+		llc_tx(DL_UNITDATA, MAC_BROADCAST, sizeof(tx), *ptr = tx);//broadcast request
 		
 		while (xQueueReceive(net_ack, &data, portMAX_DELAY) != pdTRUE);
 		if(data.SRC_address == address){
@@ -119,11 +119,11 @@ void net_tx(const uint8_t *packet, uint8_t address){ //requrie whole package and
 		tx.control = DATA;
 		tx.SRC_address = ; // need to know the address 
 		tx.DEST_Address = ;
-		llc_tx(pri = DL_UNITDATA, addr = address , len = sizeof(tx) , *ptr = tx);
+		llc_tx(DL_UNITDATA, address , len = sizeof(tx), tx);
 		}
 
 	tx.contol 
-	llc_tx(uint8_t pri, uint8_t addr, uint8_t len, void *ptr)
+	llc_tx(pri, addr, len, *ptr);
 	
 }
 
@@ -148,7 +148,7 @@ loop:
 	{ // next we need to know if the ack is the one we are looking for 
 		if(ptr.control == REQ){ //if it is a request, send the ACK back to sender
 			//the reply package's SRC and DEST are all assigned as the senders IP addrs
-			llc_tx(DL_DATA_ACK, addr = mac_addr, len = sizeof(reply), ptr = reply);
+			llc_tx(DL_DATA_ACK, mac_addr, sizeof(reply), reply);
 			MAC_uptate(ptr.SRC_address, mac_addr); //update ARP cache 
 		}
 		else if(ptr.control == ACK){ //store the source mac to cache, judge whether the ack is for you
@@ -159,7 +159,6 @@ loop:
 					pkt.SRC_address = mac_addr;
 					pkt.DEST_Address = sender_IP;
 					pkt.Length = 0;
-
 					if (xQueueSendToBack(net_ack, &pkt, 0) != pdTRUE); 
 					}
 
@@ -179,7 +178,7 @@ void Find_MAC(IP, package){ //used for finding MAC address from the give IP addr
 	if (MAC[IP] == 0xFF)
 	{
 		 //go and broadcast the request. pri = 1 for ack, = 0 for data 
-		if(llc_tx(pri = DL_UNITDATA, addr = MAC_BROADCAST , len = sizeof(package) , *ptr = package)) // if tx success, begin loading   
+		if(llc_tx(DL_UNITDATA, MAC_BROADCAST, sizeof(package), package)) // if tx success, begin loading   
 		{
 		 		static struct llc_packet_t package;
 		 		while (xQueueReceive(llc_rx, &package, 0) != pdTRUE); //load receive sructure to pointer package
