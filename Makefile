@@ -12,8 +12,9 @@ RTOSPORT	= ATMega644P
 
 LIBS	+= -lm
 
+-include Makefile_test
 -include Makefile_phy
 -include Makefile_mac
 -include Makefile_llc
--include Makefile_test
+-include Makefile_net
 include Makefile_AVR.defs

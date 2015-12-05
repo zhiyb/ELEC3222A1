@@ -35,16 +35,16 @@ ISR(USART0_RX_vect)
 
 void app_rx_task(void *param)
 {
-	static struct llc_packet_t pkt;
+	static struct net_packet_t pkt;
 	puts_P(PSTR("\e[96mAPP RX task initialised."));
 
 loop:
-	while (xQueueReceive(llc_rx, &pkt, 0) != pdTRUE);
+	while (xQueueReceive(net_rx, &pkt, 0) != pdTRUE);
 	uint8_t *ptr = pkt.payload;
 	uint8_t len = pkt.len;
 
 	uart0_lock();
-	printf_P(PSTR("\e[92mReceived from %02x, PRI %u: "), pkt.addr, pkt.pri);
+	printf_P(PSTR("\e[92mReceived from %02x: "), pkt.addr);
 	while (len--) {
 		uint8_t c = *ptr++;
 		if (isprint(c))
@@ -80,21 +80,18 @@ poll:
 			sprintf(buffer, "%6u", count);
 			memcpy(string + 8 + 6, buffer, 6);
 			uint8_t len;
-			if (pri == DL_UNITDATA)
-				len = LLC_FRAME_MAX_SIZE - 3;
-			else
-				len = sizeof(string) > NET_PACKET_MAX_SIZE ? NET_PACKET_MAX_SIZE : sizeof(string);
+			len = sizeof(string) > 121 ? 121 : sizeof(string);
 
 			uint8_t status = 0;
-			do {
-				status = llc_tx(pri, dest, len, string);
+			//do {
+				status = net_tx(dest, len, (uint8_t *)string);
 
 				uart0_lock();
-				printf_P(PSTR("\e[91mStation %02x, "), mac_address());
+				printf_P(PSTR("\e[91mStation %02x/%02x, "), net_address(), mac_address());
 				printf_P(PSTR("sent %u(PRI %u, DEST: %02x, SIZE: %u): "), count, pri, dest, len);
 				puts_P(status ? PSTR("SUCCESS") : PSTR("FAILED"));
 				uart0_unlock();
-			} while (!status);
+			//} while (!status);
 			count++;
 		}
 
@@ -157,6 +154,7 @@ void init()
 	phy_init();
 	mac_init();
 	llc_init();
+	net_init();
 	sei();
 }
 
