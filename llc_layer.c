@@ -407,8 +407,8 @@ void llc_init()
 	while ((llc_semaphore = xSemaphoreCreateMutex()) == NULL);
 #endif
 #if LLC_DEBUG > 0
-	while (xTaskCreate(llc_rx_task, "LLC RX", 160, NULL, tskPROT_PRIORITY, NULL) != pdPASS);
+	while (xTaskCreate(llc_rx_task, "LLC RX", 160, NULL, tskHIGH_PRIORITY, NULL) != pdPASS);
 #else
-	while (xTaskCreate(llc_rx_task, "LLC RX", 100, NULL, tskPROT_PRIORITY, NULL) != pdPASS);
+	while (xTaskCreate(llc_rx_task, "LLC RX", 100, NULL, tskHIGH_PRIORITY, NULL) != pdPASS);
 #endif
 }
