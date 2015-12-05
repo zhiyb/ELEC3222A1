@@ -23,7 +23,7 @@
 #define RETRY_TIME	300
 #define RETRY_COUNT	8
 
-#undef LLC_MUTEX
+#define LLC_MUTEX
 
 QueueHandle_t llc_rx;
 static QueueHandle_t llc_ack;
@@ -153,13 +153,14 @@ uint8_t llc_tx(uint8_t pri, uint8_t addr, uint8_t len, void *ptr)
 	union ctrl_t ctrl;
 	ctrl.u8 = 0;
 
+#ifdef LLC_MUTEX
+	// Thread safe
+	while (xSemaphoreTake(llc_semaphore, portMAX_DELAY) != pdTRUE);
+#endif
+
 	struct llc_acn_t *acn = 0;
 	if (addr != MAC_BROADCAST) {
 		if (pri == DL_DATA_ACK) {
-#ifdef LLC_MUTEX
-			// Thread safe: prevent acn->s accessed by multiple thread
-			while (xSemaphoreTake(llc_semaphore, portMAX_DELAY) != pdTRUE);
-#endif
 			ctrl.s.ackreq = 1;
 			acn = llc_acn(addr);
 			ctrl.s.acn = acn->s;
@@ -182,8 +183,7 @@ uint8_t llc_tx(uint8_t pri, uint8_t addr, uint8_t len, void *ptr)
 	ctrl.s.last = 1;
 	if (llc_tx_frame(ctrl, seq, addr, len, ptr)) {
 #ifdef LLC_MUTEX
-		if (ctrl.s.ackreq)
-			xSemaphoreGive(llc_semaphore);
+		xSemaphoreGive(llc_semaphore);
 #endif
 		return 1;
 	}
@@ -409,6 +409,6 @@ void llc_init()
 #if LLC_DEBUG > 0
 	while (xTaskCreate(llc_rx_task, "LLC RX", 160, NULL, tskPROT_PRIORITY, NULL) != pdPASS);
 #else
-	while (xTaskCreate(llc_rx_task, "LLC RX", configMINIMAL_STACK_SIZE, NULL, tskPROT_PRIORITY, NULL) != pdPASS);
+	while (xTaskCreate(llc_rx_task, "LLC RX", 100, NULL, tskPROT_PRIORITY, NULL) != pdPASS);
 #endif
 }

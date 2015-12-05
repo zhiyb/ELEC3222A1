@@ -108,16 +108,20 @@ loop:
 	// Receive 1 byte data from PHY
 	data = phy_rx();
 #if MAC_DEBUG > 2
-	fputs_P(PSTR("\e[90m"), stdout);
-	if (data == FRAME_HEADER)
+	if (data == FRAME_HEADER) {
+		fputs_P(PSTR("\e[90m"), stdout);
 		putchar('^');
-	else if (data == FRAME_ESCAPE)
+	} else if (data == FRAME_ESCAPE)
 		putchar('\\');
 	else if (isprint(data))
 		putchar(data);
-	else
-		putchar('.');
-	putchar(';');
+	else {
+		putchar('`');
+		putchar('0' + ((data >> 6) & 0x07));
+		putchar('0' + ((data >> 3) & 0x07));
+		putchar('0' + ((data >> 0) & 0x07));
+	}
+	//putchar(';');
 #endif
 
 	switch (status) {
@@ -204,11 +208,15 @@ loop:
 			goto loop;
 		case FRAME_ESCAPE:
 			status = ReceivingEscaped;
+#if MAC_DEBUG > 1
+			fputs_P(PSTR("\e[90mMAC-ESC;"), stdout);
+#endif
 			goto loop;
 		}
 
 		// Data reception
 	case ReceivingEscaped:
+		status = ReceivingData;
 		// Buffer overwrite
 		if (size++ == FRAME_MAX_SIZE) {
 			status = WaitingHeader;
