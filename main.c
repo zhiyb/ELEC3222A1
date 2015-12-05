@@ -84,13 +84,18 @@ poll:
 				len = LLC_FRAME_MAX_SIZE - 3;
 			else
 				len = sizeof(string) > NET_PACKET_MAX_SIZE ? NET_PACKET_MAX_SIZE : sizeof(string);
-			uint8_t status = llc_tx(pri, dest, len, string);
 
-			uart0_lock();
-			printf_P(PSTR("\e[91mStation %02x, "), mac_address());
-			printf_P(PSTR("sent %u(PRI %u, DEST: %02x, SIZE: %u): "), count++, pri, dest, len);
-			puts_P(status ? PSTR("SUCCESS") : PSTR("FAILED"));
-			uart0_unlock();
+			uint8_t status = 0;
+			do {
+				status = llc_tx(pri, dest, len, string);
+
+				uart0_lock();
+				printf_P(PSTR("\e[91mStation %02x, "), mac_address());
+				printf_P(PSTR("sent %u(PRI %u, DEST: %02x, SIZE: %u): "), count, pri, dest, len);
+				puts_P(status ? PSTR("SUCCESS") : PSTR("FAILED"));
+				uart0_unlock();
+			} while (!status);
+			count++;
 		}
 
 		// Report memory usage
