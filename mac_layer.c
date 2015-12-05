@@ -263,5 +263,5 @@ void mac_init()
 {
 	mac_rx = xQueueCreate(2, sizeof(struct mac_frame));
 	while ((mac_semaphore = xSemaphoreCreateMutex()) == NULL);
-	while (xTaskCreate(mac_rx_task, "MAC RX", configMINIMAL_STACK_SIZE, NULL, tskPROT_PRIORITY, NULL) != pdPASS);
+	while (xTaskCreate(mac_rx_task, "MAC RX", configMINIMAL_STACK_SIZE, NULL, tskHIGH_PRIORITY, NULL) != pdPASS);
 }
