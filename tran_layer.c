@@ -21,23 +21,14 @@ struct package{
 	uint16_t checksum;
 };
 
-/*
-
-void trans(void)
+struct app_packet
 {
-	get_soc();
-	pack();
+	uint8_t len;
+	uint8_t *data;
 }
-
-
-void get_soc(struct socket *a)
-{
-	soc = *a;
-}
-*/
 void pack(struct package pck, uint8_t len, char *str)
 {
-	uint8_t length = len + STRUCT_SIZE;
+	uint8_t length;
 	pck.src_port = PORT;
 	pck.dest_port = soc.dest_port;
 	for(uint8_t i = 0; i < len / DATA_SIZE + 1; i++)
@@ -59,6 +50,7 @@ void pack(struct package pck, uint8_t len, char *str)
 			pck.checksum += pck.length;
 			pck.checksum += control[1];
 			pck.checksum += control[2];
+			length = pck.length + STRUCT_SIZE;
 			net_tx(soc.address, length, &pck);
 		}
 		else
@@ -75,6 +67,7 @@ void pack(struct package pck, uint8_t len, char *str)
 			pck.checksum += pck.length;
 			pck.checksum += control[1];
 			pck.checksum += control[2];
+			length = pck.length + STRUCT_SIZE;
 			net_tx(soc.address, length, &pck);
 		}
 	}
@@ -112,16 +105,29 @@ void tran_tx(struct socket soc, uint8_t len, const void *data)
 void tran_rx_task(void *param)
 {
 	uint8_t src_addr;
-	uint8_t *buffer;
-	uint8_t *data;
-	struct net_packet_t *tf;
-	struct package pck;
+	//uint8_t *buffer;
+	//uint8_t *data;
+	static struct net_packet_t tf;
+	struct package *pck;
+	struct app_packet apck;
+	uint8_t len;
 	uint8_t i;
+#if TRAN_DEBUG > 0
+	puts_P(PSTR("\e[96mTRAN RX task initialised.]"));
 loop: 
-	while(xQueueReceive(net_rx, buffer, portMAX_DELAY) != pdTRUE);
-	tf = buffer;
-	&pck = tf->tem;
-	/*if(pck.dest_port == LISTEN_PORT)
+	while(xQueueReceive(net_rx, &tf, portMAX_DELAY) != pdTRUE);
+	//tf = buffer
+	pck = tf.payload;
+	len = tf.len;
+	if (len != pck -> length + STRUCT_SIZE)
+	{
+#if TRAN_DEBUG > 1
+		fputs_P(PSTR("\e[90mTRAN-LEN-FAILED;]", stdout);
+#endif
+		goto drop;
+	}
+#if 0
+	if(pck.dest_port == LISTEN_PORT)
 	{	
 		src_addr = tf->ip;
 		for(i = 0; i != MAX_SOCKETS; i++)
@@ -134,22 +140,63 @@ loop:
 				}
 			}
 		}
-	}*/
-	if(pck.dest_port == LISTEN_PORT_UDP)
+	}
+#endif
+	for(i = 0; i != MAX_SOCKETS; i++)
 	{
-		src_addr = tf->ip;
+
 		if((sockets[i].status == SOCKET_ACTIVE) && (sockets[i].type == SOCKET_DATAGRAM))
 		{
-			for(i = 0; i != MAX_SOCKETS; i++)
+			if(pck -> dest_port == sockets[i].port)
 			{
+				src_addr = tf.ip;
 				if(src_addr == sockets[i].address)
 				{
-					while(xQueueSendToBack(sockets[i].queue, pck, portMAX_DELAY) != pdTRUE);
+#if TRAN_DEBUG > 2					
+					fputs_P(PSTR("\e[90mTRAN-SOCKET-FOUND;]", stdout);
+#endif
+					if(pck -> control[2] == 1)
+					{
+						memcpy(apck.data[len], pck -> data, pck -> length);
+						apck.len += pck -> length;
+						for(i = 0; i < apck.len, i++)
+						{
+							while(xQueueSendToBack(sockets[i].queue, apck.data[i], portMAX_DELAY) != pdTRUE);
+						}
+#if TRAN_DEBUG > 3					
+						fputs_P(PSTR("\e[90mTRAN-TRANSFER-DATA;]", stdout);
+#endif
+					}
+					else
+					{
+						memcpy(apck.data[len], pck -> data, pck -> length);
+						apck.len += pck -> length;
+						goto loop;
+					}
+				}
+				else
+				{
+					i++;
 				}
 			}
 		}
+		else
+		{
+			i++;
+		}
+		
+		goto drop;
 	}
-
+	else
+	{
+#if TRAN_DEBUG > 1
+		fputs_P(PSTR("\e[90mTRAN-PORT-FAILED;]", stdout);
+#endif
+		goto drop;
+	}
+drop:
+	if{tf.ptr}
+		vPortFree(tf.ptr);
 	goto loop;
 }
 

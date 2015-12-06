@@ -23,6 +23,7 @@ static TaskHandle_t appTask, rxTask;
 #define EVNT_QUEUE_RX	0x00000001
 #define EVNT_UART_RX	0x00000002
 
+
 ISR(USART0_RX_vect)
 {
 	BaseType_t xTaskWoken = pdFALSE;
@@ -58,7 +59,7 @@ void app_rx_task(void *param)
 	puts_P(PSTR("\e[96mAPP RX task initialised."));
 
 loop:
-	while (xQueueReceive(net_rx, &pkt, 0) != pdTRUE);
+	while (xQueueReceive(socket[i], &pkt, 0) != pdTRUE);
 	uint8_t *ptr = pkt.payload;
 	uint8_t len = pkt.len;
 
@@ -288,6 +289,8 @@ void init()
 	stdin = uart0_fd();
 	puts_P(PSTR("\x0c\e[96mStarting up..."));
 
+	socket_init();
+	tran_init();
 	phy_init();
 	mac_init();
 	llc_init();
