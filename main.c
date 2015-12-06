@@ -59,6 +59,16 @@ loop:
 	goto loop;
 }
 
+void app_report(void)
+{
+	uint16_t total = configTOTAL_HEAP_SIZE;
+	uint16_t free = xPortGetFreeHeapSize();
+	uint16_t usage = (float)(total - free) * 100. / configTOTAL_HEAP_SIZE;
+	uart0_lock();
+	printf_P(PSTR("\e[97mReport: heap (free: %u, total: %u, usage: %u%%)\n"), free, total, usage);
+	uart0_unlock();
+}
+
 void app_task(void *param)
 {
 	static char string[] = "Station ?, No ??????. Hello, world! This is ELEC3222-A1 group. The DLL frame is 32 bytes maximum, but NET packet can be 128 bytes";
@@ -96,14 +106,8 @@ poll:
 		}
 
 		// Report memory usage
-		if (report == 0) {
-			uint16_t total = configTOTAL_HEAP_SIZE;
-			uint16_t free = xPortGetFreeHeapSize();
-			uint16_t usage = (float)(total - free) * 100. / configTOTAL_HEAP_SIZE;
-			uart0_lock();
-			printf_P(PSTR("\e[97mReport: heap (free: %u, total: %u, usage: %u%%)\n"), free, total, usage);
-			uart0_unlock();
-		}
+		if (report == 0)
+			app_report();
 		report = report == 9 ? 0 : report + 1;
 		goto poll;
 	}
@@ -128,6 +132,10 @@ poll:
 		case 'p':
 		case 'P':
 			pri = pri == DL_UNITDATA ? DL_DATA_ACK : DL_UNITDATA;
+			break;
+		case 'r':
+		case 'R':
+			app_report();
 			break;
 		}
 		// Update destination address
