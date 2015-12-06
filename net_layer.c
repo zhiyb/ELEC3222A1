@@ -87,7 +87,8 @@ void net_arp_update(uint8_t address, uint8_t mac)
 		}
 		ptr = &(*ptr)->next;
 	}
-	*ptr = pvPortMalloc(sizeof(struct net_arp_t));
+	if ((*ptr = pvPortMalloc(sizeof(struct net_arp_t))) == 0)
+		return;
 	(*ptr)->addr = address;
 	(*ptr)->mac = mac;
 	(*ptr)->next = 0;
@@ -99,8 +100,12 @@ void net_init()
 	net_addr = eeprom_read_byte(&NVNETAddress);
 	while ((net_rx = xQueueCreate(2, sizeof(struct net_packet_t))) == NULL); //create a queue for rx
 	while ((net_ack = xQueueCreate(1, sizeof(struct net_ack_t))) == NULL);
-	//while (xTaskCreate(net_rx_task, "NET RX", configMINIMAL_STACK_SIZE, NULL, tskPROT_PRIORITY, NULL) != pdPASS);
+#if NET_DEBUG > 0
+	while (xTaskCreate(net_rx_task, "NET RX", 160, NULL, tskPROT_PRIORITY, NULL) != pdPASS);
+#else
 	while (xTaskCreate(net_rx_task, "NET RX", 120, NULL, tskPROT_PRIORITY, NULL) != pdPASS);
+	//while (xTaskCreate(net_rx_task, "NET RX", configMINIMAL_STACK_SIZE, NULL, tskPROT_PRIORITY, NULL) != pdPASS);
+#endif
 }
 
 uint8_t net_tx(uint8_t address, uint8_t len, const void *data)
@@ -112,7 +117,10 @@ uint8_t net_tx(uint8_t address, uint8_t len, const void *data)
 		// Checksum
 		buffer = pvPortMalloc(length);
 		if (buffer == NULL) {
+#if NET_DEBUG >= 0
 			fputs("NET-BUFFER-FAILED;", stdout);
+#endif
+			vTaskDelay(RETRY_TIME);
 			continue;
 		} else
 			break;
@@ -181,7 +189,9 @@ transmit:
 void net_rx_task(void *param)
 {
 	static struct llc_packet_t pkt;
+#if NET_DEBUG > 0
 	puts_P(PSTR("\e[96mNET RX task initialised."));
+#endif
 
 loop:
 	while (xQueueReceive(llc_rx, &pkt, portMAX_DELAY) != pdTRUE);
@@ -233,7 +243,7 @@ loop:
 			ack.addr = packet->SRC_Address;
 			ack.mac = pkt.addr;
 			if (xQueueSendToBack(net_ack, &ack, 0) != pdTRUE) {
-#if NET_DEBUG >= 0
+#if NET_DEBUG > 0
 				fputs_P(PSTR("\e[90mNET-ARP-ACK-FAILED;"), stdout);
 #endif
 			}
@@ -250,7 +260,7 @@ loop:
 			p.payload = packet->TRAN_Segment;
 			p.ptr = pkt.ptr;
 			if (xQueueSendToBack(net_rx, &p, 0) != pdTRUE) {
-#if NET_DEBUG >= 0
+#if NET_DEBUG > 0
 				fputs_P(PSTR("\e[90mNET-DATA-FAILED;"), stdout);
 #endif
 				goto drop;
@@ -258,7 +268,7 @@ loop:
 		}
 		goto loop;
 	default:
-#if NET_DEBUG >= 0
+#if NET_DEBUG > 0
 		fputs_P(PSTR("\e[90mNET-CTRL-FAILED;"), stdout);
 #endif
 		goto drop;

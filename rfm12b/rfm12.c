@@ -249,7 +249,7 @@ ISR(RFM12_INT_VECT)
 				{
 					uint8_t data = rfm12_read(RFM12_CMD_READ);
 					if (xQueueSendToBackFromISR(rfm_rx, &data, &xTaskWoken) != pdPASS) {
-#if PHY_DEBUG >= 0
+#if PHY_DEBUG > 0
 						fputs_P(PSTR("\e[90mPHY-RX-FAIL;"), stdout);
 #endif
 					}

@@ -105,9 +105,12 @@ static uint8_t llc_tx_frame(union ctrl_t ctrl, uint8_t seq, uint8_t addr, uint8_
 {
 	// Generate LLC frame
 	static struct llc_frame_t *frame;
-	do
+	for (;;) {
 		frame = pvPortMalloc(sizeof(struct llc_frame_t) + len);
-	while (frame == 0);
+		if (frame != 0)
+			break;
+		vTaskDelay(RETRY_TIME);
+	}
 	frame->ctrl = ctrl;
 	frame->seq = seq;
 	frame->len = len;
@@ -200,7 +203,9 @@ failed:	// ackreq must be 1 to be here
 static void llc_rx_task(void *param)
 {
 	static struct mac_frame data;
+#if LLC_DEBUG > 0
 	puts_P(PSTR("\e[96mLLC RX task initialised."));
+#endif
 
 loop:
 	// Receive 1 frame from MAC queue
@@ -220,8 +225,8 @@ loop:
 		struct llc_ack_t ack;
 		if (!uxQueueSpacesAvailable(llc_ack)) {
 			xQueueReceive(llc_ack, &ack, 0);
-#if LLC_DEBUG >= 0
-			fputs_P(PSTR("\e[90mLLC-A-FAIL;"), stdout);
+#if LLC_DEBUG > 0
+			fputs_P(PSTR("\e[90mLLC-RX-ACK-FAIL;"), stdout);
 #endif
 		}
 		ack.ctrl = frame->ctrl;
@@ -229,7 +234,7 @@ loop:
 		ack.addr = data.addr;
 		xQueueSendToBack(llc_ack, &ack, 0);
 #if LLC_DEBUG > 0
-		fputs_P(PSTR("\e[94mACK;"), stdout);
+		fputs_P(PSTR("\e[94mLLC-RX-ACK;"), stdout);
 #endif
 		goto drop;
 	}
@@ -264,8 +269,8 @@ loop:
 		// If this frame is out of sequence
 		if (frame->seq != 0) {
 #if LLC_DEBUG > 0
-			//fputs_P(PSTR("\e[93mLLC-N-OUT;"), stdout);
-			printf_P(PSTR("\e[93mLLC-N-OUT,%u,%u;"), frame->seq, acn->seq);
+			//fputs_P(PSTR("\e[93mLLC-NEW-OUT;"), stdout);
+			printf_P(PSTR("\e[93mLLC-NEW-OUT,%u,%u;"), frame->seq, acn->seq);
 #endif
 			goto drop;
 		}
@@ -276,8 +281,12 @@ loop:
 			if (frame->len != 0) {
 				// Send to upper layer
 				uint8_t *buffer = pvPortMalloc(frame->len);
-				if (buffer == NULL)	// Insufficient RAM
+				if (buffer == NULL) {	// Insufficient RAM
+#if LLC_DEBUG >= 0
+					fputs_P(PSTR("\e[90mLLC-MEM-END-FAIL;"), stdout);
+#endif
 					goto drop;
+				}
 				memcpy(buffer, frame->payload, frame->len);
 
 				struct llc_packet_t pkt;
@@ -289,8 +298,8 @@ loop:
 
 				// Unable to handle it at the moment
 				if (xQueueSendToBack(llc_rx, &pkt, 0) != pdTRUE) {
-#if LLC_DEBUG >= 0
-					fputs_P(PSTR("\e[90mLLC-S-FAIL;"), stdout);
+#if LLC_DEBUG > 0
+					fputs_P(PSTR("\e[90mLLC-Q-SNG-FAIL;"), stdout);
 #endif
 					vPortFree(buffer);
 					goto drop;
@@ -298,10 +307,14 @@ loop:
 			}
 			acn->seq = 0xff;	// Mark as done
 		} else {
-			if (acn->buffer == NULL && (acn->buffer = pvPortMalloc(PACKET_MAX_SIZE)) == NULL)
+			if (acn->buffer == NULL && (acn->buffer = pvPortMalloc(PACKET_MAX_SIZE)) == NULL) {
+#if LLC_DEBUG >= 0
+				fputs_P(PSTR("\e[90mLLC-MEM-FAIL;"), stdout);
+#endif
 				goto drop;
+			}
 #if LLC_DEBUG > 1
-			fputs_P(PSTR("\e[93mLLC-S-STA;"), stdout);
+			fputs_P(PSTR("\e[93mLLC-SEQ-STA;"), stdout);
 #endif
 			memcpy(acn->buffer, frame->payload, frame->len);
 			acn->size = frame->len;
@@ -317,8 +330,8 @@ loop:
 			// If this frame is out of sequence
 			if (frame->seq != acn->seq + 1) {
 #if LLC_DEBUG > 0
-				//fputs_P(PSTR("\e[93mLLC-S-OUT;"), stdout);
-				printf_P(PSTR("\e[93mLLC-S-OUT,%u,%u;"), frame->seq, acn->seq);
+				//fputs_P(PSTR("\e[93mLLC-SEQ-OUT;"), stdout);
+				printf_P(PSTR("\e[90mLLC-SEQ-OUT,%u,%u;"), frame->seq, acn->seq);
 #endif
 				// Ignore this packet
 				acn->r = 0xff;
@@ -327,14 +340,14 @@ loop:
 
 			// If data buffer is insufficient
 			if (acn->size + frame->len > PACKET_MAX_SIZE) {
-#if LLC_DEBUG >= 0
-				fputs_P(PSTR("\e[90mLLC-B-FAIL;"), stdout);
+#if LLC_DEBUG > 0
+				fputs_P(PSTR("\e[90mLLC-SEQ-MEM-FAIL;"), stdout);
 #endif
 				goto drop;
 			}
 
 #if LLC_DEBUG > 1
-			fputs_P(PSTR("\e[93mLLC-S-ACC;"), stdout);
+			fputs_P(PSTR("\e[93mLLC-SEQ-ACC;"), stdout);
 #endif
 			if (acn->buffer != NULL) {
 				memcpy(acn->buffer + acn->size, frame->payload, frame->len);
@@ -355,8 +368,8 @@ loop:
 
 					// Unable to handle it at the moment
 					if (xQueueSendToBack(llc_rx, &pkt, 0) != pdTRUE) {
-#if LLC_DEBUG >= 0
-						fputs_P(PSTR("\e[90mLLC-M-FAIL;"), stdout);
+#if LLC_DEBUG > 0
+						fputs_P(PSTR("\e[90mLLC-Q-MLT-FAIL;"), stdout);
 #endif
 						goto drop;
 					}
@@ -379,7 +392,7 @@ loop:
 	vPortFree(data.ptr);
 
 #if LLC_DEBUG > 1
-	fputs_P(PSTR("\e[93mACK;"), stdout);
+	fputs_P(PSTR("\e[93mLLC-TX-ACK;"), stdout);
 #endif
 	goto loop;
 
