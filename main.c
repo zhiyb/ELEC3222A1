@@ -254,7 +254,7 @@ poll:
 			if (c == '\n' || uartOffset == sizeof(uartBuffer)) {
 				*uartPtr = '\0';
 				uart0_lock();
-				fputs_P(PSTR("\nUART message recorded:\n"), stdout);
+				fputs_P(PSTR("\e[96mUART message recorded:\n"), stdout);
 				fputs(uartBuffer, stdout);
 				uart0_unlock();
 				uartStatus = UARTSettings;
