@@ -72,15 +72,15 @@ void app_report(void)
 void app_task(void *param)
 {
 	static char string[] = "Station ?, No ??????. Hello, world! This is ELEC3222-A1 group. The DLL frame is 32 bytes maximum, but NET packet can be 128 bytes";
-	static uint8_t dest = MAC_BROADCAST, pri = DL_UNITDATA;
+	static uint8_t dest = 0;
 	static char buffer[7];
 	uint8_t report = 0;
 	uint16_t count = 0;
 	uint32_t notify;
-	string[8] = mac_address();
+	string[8] = net_address();
 	// Enable UART0 RXC interrupt
 	uart0_interrupt_rxc(1);
-	printf_P(PSTR("\e[96mAPP task initialised (%02x), hello world!\n"), mac_address());
+	printf_P(PSTR("\e[96mAPP task initialised (%02x/%02x), hello world!\n"), net_address(), mac_address());
 
 poll:
 	// No event notify received
@@ -93,15 +93,15 @@ poll:
 			len = sizeof(string) > 121 ? 121 : sizeof(string);
 
 			uint8_t status = 0;
-			//do {
+			do {
 				status = net_tx(dest, len, (uint8_t *)string);
 
 				uart0_lock();
 				printf_P(PSTR("\e[91mStation %02x/%02x, "), net_address(), mac_address());
-				printf_P(PSTR("sent %u(PRI %u, DEST: %02x, SIZE: %u): "), count, pri, dest, len);
-				puts_P(status ? PSTR("SUCCESS") : PSTR("FAILED"));
+				printf_P(PSTR("sent %u(DEST: %02x, SIZE: %u): "), count, dest, len);
+				puts_P(status ? PSTR("SUCCESS") : PSTR("\e[31mFAILED"));
 				uart0_unlock();
-			//} while (!status);
+			} while (!status);
 			count++;
 		}
 
@@ -128,10 +128,6 @@ poll:
 			break;
 		case 'a' ... 'f':
 			num = c - 'a' + 10;
-			break;
-		case 'p':
-		case 'P':
-			pri = pri == DL_UNITDATA ? DL_DATA_ACK : DL_UNITDATA;
 			break;
 		case 'r':
 		case 'R':
