@@ -18,8 +18,8 @@ enum SocketStatus {SOCKET_ALLOCATED = 0, SOCKET_ACTIVE = 1, SOCKET_FREE = 0xff};
 enum SocketTypes {SOCKET_LISTEN = 0, SOCKET_CONNECTION = 1, SOCKET_DATAGRAM = 2};
 
 struct socket_t {
-	uint16_t address;
-	uint16_t port, sport;
+	uint8_t address;
+	uint8_t port, sport;
 
 	// enum SocketStatus
 	uint8_t status;
