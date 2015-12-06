@@ -24,7 +24,7 @@ void net_init();
 // Unacknowledged packet, acknowledged packet
 //enum NET_Primitives {NET_UNITDATA = 0, NET_DATA_ACK};
 
-// Data transfer between LLC and upper layer
+// Data transfer between NET and upper layer
 struct net_packet_t {
 	//uint8_t pri;	// NET_Primitives
 	uint8_t addr;	// RX: The address of the sending host
@@ -39,10 +39,11 @@ extern QueueHandle_t net_rx;
 
 // Transmit a packet
 // The data pointed by ptr will not be freed
-// Return:	DL_UNITDATA: always 1
-// 		DL_DATA_ACK: acknowledged or not
+// Return:	NET_UNITDATA: always 1
+// 		NET_DATA_ACK: succeed or not
 uint8_t net_tx(uint8_t address, uint8_t length, const void *data);
 
+// Net address
 uint8_t net_address(void);
 uint8_t net_address_update(uint8_t addr);
 
