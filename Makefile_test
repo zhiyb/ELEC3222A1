@@ -1,4 +1,8 @@
 SRC	+= main.c
 SUBDIRS	+= uart0
+SUBDIRS	+= common
+SUBDIRS	+= rgbled
+
+RGBLED_PORT	= C
 
 DEFS	+= -DUART0_BAUD=1500000
