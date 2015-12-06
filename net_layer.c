@@ -103,7 +103,7 @@ void net_init()
 	while (xTaskCreate(net_rx_task, "NET RX", 120, NULL, tskPROT_PRIORITY, NULL) != pdPASS);
 }
 
-uint8_t net_tx(uint8_t address, uint8_t len, const uint8_t *data)
+uint8_t net_tx(uint8_t address, uint8_t len, const void *data)
 { //requrie whole package and destination address
 	// Allocate buffer
 	uint8_t length = NET_PKT_MIN_SIZE + len;
