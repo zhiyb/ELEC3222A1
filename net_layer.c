@@ -97,15 +97,15 @@ void net_init()
 {
 	net_arp_init();
 	net_addr = eeprom_read_byte(&NVNETAddress);
-	//while (xTaskCreate(net_rx_task, "NET RX", configMINIMAL_STACK_SIZE, NULL, tskPROT_PRIORITY, NULL) != pdPASS);
-	while (xTaskCreate(net_rx_task, "NET RX", 100, NULL, tskPROT_PRIORITY, NULL) != pdPASS);
 	while ((net_rx = xQueueCreate(2, sizeof(struct net_packet_t))) == NULL); //create a queue for rx
-	while ((net_ack = xQueueCreate(2, sizeof(struct net_ack_t))) == NULL);
+	while ((net_ack = xQueueCreate(1, sizeof(struct net_ack_t))) == NULL);
+	//while (xTaskCreate(net_rx_task, "NET RX", configMINIMAL_STACK_SIZE, NULL, tskPROT_PRIORITY, NULL) != pdPASS);
+	while (xTaskCreate(net_rx_task, "NET RX", 120, NULL, tskPROT_PRIORITY, NULL) != pdPASS);
 }
 
 uint8_t net_tx(uint8_t address, uint8_t len, const uint8_t *data)
 { //requrie whole package and destination address
-	// Alloc buffer
+	// Allocate buffer
 	uint8_t length = NET_PKT_MIN_SIZE + len;
 	struct net_buffer *buffer;
 	for (;;) {
