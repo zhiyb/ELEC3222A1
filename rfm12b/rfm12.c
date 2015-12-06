@@ -395,7 +395,7 @@ void phy_init(void) {
 	rfm_mode = PHYRX;
 
 	// Initialise RTOS queue
-	rfm_rx = xQueueCreate(32, 1);
+	rfm_rx = xQueueCreate(48, 1);
 	rfm_tx = xQueueCreate(8, 1);
 	while (rfm_rx == 0 || rfm_tx == 0);
 
