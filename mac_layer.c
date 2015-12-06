@@ -102,7 +102,9 @@ void mac_rx_task(void *param)
 	struct mac_buffer_t *buffer = 0;
 	uint8_t *ptr = 0, size = 0, data;
 	uint16_t checksum = 0;
+#if MAC_DEBUG > 0
 	puts_P(PSTR("\e[96mMAC RX task initialised."));
+#endif
 
 loop:
 	// Receive 1 byte data from PHY
@@ -180,24 +182,24 @@ loop:
 						if (buffer == 0) {
 							status = WaitingHeader;
 #if MAC_DEBUG >= 0
-							fputs_P(PSTR("\e[90mMAC-B-FAIL;"), stdout);
+							fputs_P(PSTR("\e[90mMAC-MEM-FAIL;"), stdout);
 #endif
 							goto loop;
 						}
 					} else {
-#if MAC_DEBUG >= 0
+#if MAC_DEBUG > 0
 						fputs_P(PSTR("\e[90mMAC-Q-FAIL;"), stdout);
 #endif
 					}
 				} else {
 #if MAC_DEBUG > 0
-					fputs_P(PSTR("\e[93mDROP;"), stdout);
+					fputs_P(PSTR("\e[93mMAC-DROP;"), stdout);
 #endif
 				}
 			} else {
 				status = ReceivingData;
 #if MAC_DEBUG > 1
-				fputs_P(PSTR("\e[90mMAC-RESET;"), stdout);
+				fputs_P(PSTR("\e[90mMAC-RST;"), stdout);
 #endif
 			}
 
