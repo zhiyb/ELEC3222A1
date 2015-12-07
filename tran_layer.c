@@ -74,15 +74,6 @@ void pack(struct package pck, uint8_t len, char *str)
 	}
 }
 
-void unpack(uint8_t len_data, uint8_t *data)
-{
-	len_data = net_read(&pck);
-	data = pck.appdata;	
-}
-void sync_len(uint8_t a)
-{
-	len = a;
-}
 void tran_tx(struct socket soc, uint8_t len, const void *data)
 {
 //	uint8_t length = STRUCT_SIZE + len;
@@ -212,5 +203,11 @@ void tran_init()
 
 uint8_t rec_from(uint8_t sid, void *buf, uint8_t len, uint8_t addr)
 {
-	
+	struct app_packet *app_tem;
+	while(xQueueReceive(socket[sid].queue, app_tem, 0) != pdTURE);
+	len = app_tem -> len;
+	addr = app_tem -> addr;
+	buf = app_tem -> data;
+	buf[len] = '\0';
+	return len;
 }
