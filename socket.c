@@ -10,7 +10,14 @@ void socket_init()
 }
 
 // Alloc a socket
-void socket();
+void socket()
+{
+	uint8_t i = 0;
+	for (i = 0; i < MAX_SOCKETS; i++)
+	{
+		if(sockets[i].status = SOCKET_FREE)
+	}
+}
 // Listen on a port
 void listen(uint8_t sid, uint16_t port)
 {

@@ -24,6 +24,7 @@ struct package{
 struct app_packet
 {
 	uint8_t len;
+	uint8_t addr;
 	uint8_t *data;
 }
 void pack(struct package pck, uint8_t len, char *str)
@@ -155,45 +156,45 @@ loop:
 #if TRAN_DEBUG > 2					
 					fputs_P(PSTR("\e[90mTRAN-SOCKET-FOUND;]", stdout);
 #endif
-					if(pck -> control[2] == 1)
-					{
+
+					//if(pck -> control[2] == 1)
+					//{
 						memcpy(apck.data[len], pck -> data, pck -> length);
-						apck.len += pck -> length;
-						for(i = 0; i < apck.len, i++)
-						{
-							while(xQueueSendToBack(sockets[i].queue, apck.data[i], portMAX_DELAY) != pdTRUE);
-						}
+						apck.addr = soc.address;
+						apck.len = pck -> length;
+							while(xQueueSendToBack(sockets[i].queue, apck, portMAX_DELAY) != pdTRUE);
 #if TRAN_DEBUG > 3					
 						fputs_P(PSTR("\e[90mTRAN-TRANSFER-DATA;]", stdout);
 #endif
-					}
-					else
-					{
-						memcpy(apck.data[len], pck -> data, pck -> length);
-						apck.len += pck -> length;
-						goto loop;
-					}
+					//}
+					//else
+					//{
+					//	memcpy(apck.data[len], pck -> data, pck -> length);
+					//	apck.len += pck -> length;
+					//	goto loop;
+					//}
 				}
 				else
 				{
 					i++;
 				}
 			}
+
+			else
+			{
+#if TRAN_DEBUG > 1
+				fputs_P(PSTR("\e[90mTRAN-PORT-FAILED;]", stdout);
+#endif
+				i++;
+			}	
 		}
 		else
 		{
 			i++;
 		}
-		
-		goto drop;
-	}
-	else
-	{
-#if TRAN_DEBUG > 1
-		fputs_P(PSTR("\e[90mTRAN-PORT-FAILED;]", stdout);
-#endif
-		goto drop;
-	}
+	}		
+	
+	
 drop:
 	if{tf.ptr}
 		vPortFree(tf.ptr);
@@ -209,3 +210,7 @@ void tran_init()
 	while (xTaskCreate(tran_rx_task, "TRAN RX", 120, NULL, tskPROT_PRIORITY, NULL) != pdPASS);
 }
 
+uint8_t rec_from(uint8_t sid, void *buf, uint8_t len, uint8_t addr)
+{
+	
+}
