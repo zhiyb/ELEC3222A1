@@ -127,12 +127,14 @@ void app_report(void)
 	uint16_t usage = (float)(total - free) * 100. / configTOTAL_HEAP_SIZE;
 	uart0_lock();
 	printf_P(PSTR("\e[97mReport: heap (free: %u, total: %u, usage: %u%%)\n"), free, total, usage);
+	llc_report();
 	uart0_unlock();
 }
 
 void app_task(void *param)
 {
 	static char string[] = "Station ?, No ??????. Hello, world! This is ELEC3222-A1 group. The DLL frame is 32 bytes maximum, but NET packet can be 128 bytes";
+	//static char string[] = "Station ?, No ??????. Git - the stupid content tracker. git: \"goddamn idiotic truckload of sh*t\": when it breaks.";
 	static uint8_t dest = 0;
 	static char buffer[7];
 #ifdef AUTO_REPORT
