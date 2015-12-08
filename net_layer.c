@@ -14,7 +14,7 @@
 enum NetControl {ARPReq = 0, ARPAck, NETData};
 
 #define RETRY_TIME	300
-#define RETRY_COUNT	5
+#define RETRY_COUNT	3
 
 QueueHandle_t net_rx, net_ack;
 
@@ -33,7 +33,7 @@ struct net_ack_t {
 	uint8_t addr;	// SRC address
 };
 
-struct net_arp_t { //linked list
+struct net_arp_t {
 	uint8_t addr;
 	uint8_t mac;
 	struct net_arp_t *next;
@@ -43,7 +43,7 @@ struct net_arp_t { //linked list
 #define CHECKSUM(s)	((uint16_t *)(&(s)->TRAN_Segment + (s)->Length))
 
 static EEMEM uint8_t NVNETAddress = ADDRESS;
-static uint8_t net_addr; //Own IP address, use static to save stacks
+static uint8_t net_addr;
 
 void net_rx_task(void *param);
 
@@ -61,7 +61,7 @@ uint8_t net_address_update(uint8_t addr)
 
 void net_arp_init()
 {
-	arp = 0; //Set all the elements in arp to 0
+	arp = 0;
 }
 
 uint8_t net_arp_find(uint8_t address)
@@ -194,7 +194,7 @@ void net_rx_task(void *param)
 #endif
 
 loop:
-	llc_rx(&pkt);
+	while (xQueueReceive(llc_rx, &pkt, portMAX_DELAY) != pdTRUE);
 
 	struct net_buffer *packet = pkt.payload;
 	if (pkt.len != packet->Length + NET_PKT_MIN_SIZE) {
