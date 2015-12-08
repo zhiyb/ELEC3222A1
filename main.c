@@ -9,7 +9,8 @@
 #include <stdio.h>
 #include <ctype.h>
 #include <uart0.h>
-#include <rgbled.h>
+#include "socket.h"
+#include "tran_layer.h"
 #include "phy_layer.h"
 #include "mac_layer.h"
 #include "llc_layer.h"
@@ -55,20 +56,20 @@ uint8_t c2hex(uint8_t c)
 
 void app_rx_task(void *param)
 {
-	static struct apck pkt;
+	//static struct apck pkt;
 	uint8_t listenfd;
 	listenfd = socket();
 	bind(listenfd, 233);
 	puts_P(PSTR("\e[96mAPP RX task initialised."));
-
-loop:
 	//while (xQueueReceive(socket[i], &pkt, 0) != pdTRUE);
 	uint8_t len;
-	uint8_t *buf;
-	uint8_t addr;
+	static uint8_t buf[256];
+	uint8_t addr = 0;
+	uint8_t *ptr;
 	//uint8_t *ptr = pkt.payload;
 	//uint8_t len = pkt.len;
-	rec_from(listenfd, &pkt, len, addr);
+loop:
+	rec_from(listenfd, buf, len, addr);
 #if 0
 	if (*ptr == 'L') {		// RGB LED update
 		uint8_t length = len - 1;
@@ -108,12 +109,12 @@ loop:
 		}
 	}
 #endif
-print:
-	buf = pkt.data;
+	//buf = pkt;
 	uart0_lock();
-	printf_P(PSTR("\e[92mReceived from %02x: "), pkt.addr);
+	ptr = buf;
+	printf_P(PSTR("\e[92mReceived from %02x: "), addr);
 	while (len--) {
-		uint8_t c = *ptr++;
+		uint8_t c =  *ptr++;
 		if (isprint(c))
 			putchar(c);
 		else
@@ -121,7 +122,7 @@ print:
 	}
 	putchar('\n');
 	uart0_unlock();
-	vPortFree(pkt.data);
+	vPortFree(buf);
 
 	goto loop;
 }
@@ -164,7 +165,7 @@ poll:
 		if (uartSending) {
 			sendfd = socket();
 
-			uint8_t status = sendto(sendfd, uartOffset, uartBuffer, dest);
+			uint8_t status = sendto(sendfd, uartBuffer, uartOffset, dest);
 
 			uart0_lock();
 			printf_P(PSTR("\e[91mStation %02x/%02x, "), net_address(), mac_address());
@@ -187,7 +188,7 @@ poll:
 			len = sizeof(string) > 121 ? 121 : sizeof(string);
 			
 			sendfd = socket();	
-			uint8_t status = sendto(sendfd, len, string, dest);
+			uint8_t status = sendto(sendfd, string, len, dest);
 
 			uart0_lock();
 			printf_P(PSTR("\e[91mStation %02x/%02x, "), net_address(), mac_address());
@@ -290,10 +291,10 @@ void init()
 	PORTA = 0x00;
 	DDRA = 0xff;
 
-	rgbLED_init();
-	uint8_t i = RGBLED_NUM;
-	while (i--)
-		rgbLED[i] = 0;
+	//rgbLED_init();
+//	uint8_t i = RGBLED_NUM;
+//	while (i--)
+//		rgbLED[i] = 0;
 
 	uart0_init();
 	stdout = uart0_fd();
@@ -301,11 +302,11 @@ void init()
 	puts_P(PSTR("\x0c\e[96mStarting up..."));
 
 	socket_init();
-	tran_init();
 	phy_init();
 	mac_init();
 	llc_init();
 	net_init();
+	tran_init();
 	sei();
 }
 
