@@ -33,12 +33,15 @@ struct llc_packet_t {
 	void *payload;	// Pointer to payload field
 };
 
+// RTOS queue for packet transmission & reception
+// Queue item size: llc_packet
+extern QueueHandle_t llc_rx;
+
 // Transmit a packet
+// The data pointed by ptr will not be freed
 // Return:	DL_UNITDATA: always 1
 // 		DL_DATA_ACK: acknowledged or not
 uint8_t llc_tx(uint8_t pri, uint8_t addr, uint8_t len, void *ptr);
-// Receive a packet
-void llc_rx(struct llc_packet_t *pkt);
 uint8_t llc_written();
 // Copy data to tx queue
 void llc_write(void *data, uint8_t length);
