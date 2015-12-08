@@ -205,16 +205,7 @@ loop:
 
 	//packet point to the payload
 	struct net_buffer *packet = pkt.payload;
-	uint16_t checksum = 0;
-	uint8_t *ptr = (uint8_t *)packet;
-	while (pkt.len --)
-		checksum += *(ptr)++;
-	if (*CHECKSUM(packet)) != checksum)
-#if NET_DEBUG > 1
-		FPUTS_P(PSTR("\e[90mNET-CHECKSUM-FAILED;"), stdout);
-#endif 
-		goto drop;
-	
+
 	if (pkt.len != packet->Length + NET_PKT_MIN_SIZE) {
 #if NET_DEBUG > 1
 		fputs_P(PSTR(ESC_MAGENTA "NET-LEN-FAILED;"), stdout);
@@ -231,6 +222,20 @@ loop:
 		fputs_P(PSTR(ESC_MAGENTA "NET-ADDR-DROP;"), stdout);
 #endif
 		goto drop;
+	}
+
+	{	// Check checksum
+		uint16_t checksum = 0;
+		uint8_t len = pkt.len - 2;
+		uint8_t *ptr = (uint8_t *)packet;
+		while (len--)
+			checksum += *ptr++;
+		if (*CHECKSUM(packet) != checksum) {
+#if NET_DEBUG > 1
+			fputs_P(PSTR(ESC_GREY "NET-CKSUM-FAILED;"), stdout);
+#endif 
+			goto drop;
+		}
 	}
 
 	switch (packet->Control) {
