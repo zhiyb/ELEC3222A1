@@ -46,6 +46,7 @@ uint8_t net_tx(uint8_t address, uint8_t length, const void *data);
 // Net address
 uint8_t net_address(void);
 uint8_t net_address_update(uint8_t addr);
+void net_report();
 
 #ifdef __cplusplus
 }
