@@ -25,7 +25,6 @@
 
 #define LLC_MUTEX
 
-QueueHandle_t llc_rx;
 static QueueHandle_t llc_ack;
 #ifdef LLC_MUTEX
 static SemaphoreHandle_t llc_semaphore;
@@ -200,7 +199,7 @@ failed:	// ackreq must be 1 to be here
 	return 0;
 }
 
-static void llc_rx_task(void *param)
+void llc_rx(struct llc_packet_t *pkt)
 {
 	static struct mac_frame data;
 #if LLC_DEBUG > 0
@@ -243,16 +242,13 @@ loop:
 	if (data.addr == MAC_BROADCAST || frame->ctrl.s.ackreq == 0) {
 		// If the packet only have a single frame
 		if (frame->seq == 0 && frame->ctrl.s.last) {
-			struct llc_packet_t pkt;
-			pkt.pri = DL_UNITDATA;
-			pkt.addr = data.addr;
-			pkt.len = frame->len;
-			pkt.ptr = data.ptr;
-			pkt.payload = frame->payload;
-
 			// Send to upper layer
-			if (xQueueSendToBack(llc_rx, &pkt, 0) == pdTRUE)
-				goto loop;
+			pkt->pri = DL_UNITDATA;
+			pkt->addr = data.addr;
+			pkt->len = frame->len;
+			pkt->ptr = data.ptr;
+			pkt->payload = frame->payload;
+			return;
 		}
 		goto drop;
 	}
@@ -279,31 +275,21 @@ loop:
 		if (frame->ctrl.s.last) {
 			// If this frame is not empty
 			if (frame->len != 0) {
+				// Send ACK
+				struct llc_frame_t f;
+				f.ctrl.u8 = frame->ctrl.u8;
+				f.ctrl.s.ack = 1;
+				f.seq = 0;
+				f.len = 0;
+				mac_tx(data.addr, &f, FRAME_APPEND_SIZE);
+
 				// Send to upper layer
-				uint8_t *buffer = pvPortMalloc(frame->len);
-				if (buffer == NULL) {	// Insufficient RAM
-#if LLC_DEBUG >= 0
-					fputs_P(PSTR("\e[90mLLC-MEM-END-FAIL;"), stdout);
-#endif
-					goto drop;
-				}
-				memcpy(buffer, frame->payload, frame->len);
-
-				struct llc_packet_t pkt;
-				pkt.pri = DL_DATA_ACK;
-				pkt.addr = data.addr;
-				pkt.len = frame->len;
-				pkt.ptr = buffer;
-				pkt.payload = buffer;
-
-				// Unable to handle it at the moment
-				if (xQueueSendToBack(llc_rx, &pkt, 0) != pdTRUE) {
-#if LLC_DEBUG > 0
-					fputs_P(PSTR("\e[90mLLC-Q-SNG-FAIL;"), stdout);
-#endif
-					vPortFree(buffer);
-					goto drop;
-				}
+				pkt->pri = DL_DATA_ACK;
+				pkt->addr = data.addr;
+				pkt->len = frame->len;
+				pkt->ptr = data.ptr;
+				pkt->payload = frame->payload;
+				return;
 			}
 			acn->seq = 0xff;	// Mark as done
 		} else {
@@ -358,24 +344,23 @@ loop:
 			if (frame->ctrl.s.last) {
 				// If this packet is not empty
 				if (acn->size != 0) {
-					// Send to upper layer
-					struct llc_packet_t pkt;
-					pkt.pri = DL_DATA_ACK;
-					pkt.addr = data.addr;
-					pkt.len = acn->size;
-					pkt.ptr = acn->buffer;
-					pkt.payload = acn->buffer;
+					// Send ACK
+					frame->ctrl.s.ack = 1;
+					frame->len = 0;
+					mac_tx(data.addr, frame, FRAME_APPEND_SIZE);
+					vPortFree(data.ptr);
 
-					// Unable to handle it at the moment
-					if (xQueueSendToBack(llc_rx, &pkt, 0) != pdTRUE) {
-#if LLC_DEBUG > 0
-						fputs_P(PSTR("\e[90mLLC-Q-MLT-FAIL;"), stdout);
-#endif
-						goto drop;
-					}
+					// Send to upper layer
+					pkt->pri = DL_DATA_ACK;
+					pkt->addr = data.addr;
+					pkt->len = acn->size;
+					pkt->ptr = acn->buffer;
+					pkt->payload = acn->buffer;
 
 					acn->buffer = 0;
 					acn->size = 0;
+
+					return;
 				}
 			}
 			acn->seq++;
@@ -414,14 +399,8 @@ void llc_init()
 		acnCache[--i].addr = MAC_BROADCAST;
 	lastACN = ACN_CACHE_SIZE - 1;
 
-	while ((llc_rx = xQueueCreate(2, sizeof(struct llc_packet_t))) == NULL);
-	while ((llc_ack = xQueueCreate(2, sizeof(struct llc_ack_t))) == NULL); //create queue for ack
+	while ((llc_ack = xQueueCreate(1, sizeof(struct llc_ack_t))) == NULL); //create queue for ack
 #ifdef LLC_MUTEX
 	while ((llc_semaphore = xSemaphoreCreateMutex()) == NULL);
-#endif
-#if LLC_DEBUG > 0
-	while (xTaskCreate(llc_rx_task, "LLC RX", 160, NULL, tskPROT_PRIORITY, NULL) != pdPASS);
-#else
-	while (xTaskCreate(llc_rx_task, "LLC RX", 100, NULL, tskPROT_PRIORITY, NULL) != pdPASS);
 #endif
 }
