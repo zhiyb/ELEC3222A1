@@ -10,7 +10,20 @@ void socket_init()
 }
 
 // Alloc a socket
-void socket();
+uint8_t socket()
+{
+	uint8_t i = 0;
+	for (i = 0; i < MAX_SOCKETS; i++)
+	{
+		if(sockets[i].status = SOCKET_FREE)
+		{
+			sockets[i].status = SOCKET_ALLOCATED;
+			//sockets[i].port = port;
+			return i;
+		}
+	}
+
+}
 // Listen on a port
 void listen(uint8_t sid, uint16_t port)
 {
@@ -43,4 +56,10 @@ uint8_t read(uint8_t sid, uint8_t *buffer, uint8_t len)
 	}	//len = *buffer;
 	//buffer++;
 	return len;
+}
+
+void bind(uint8_t sid, uint8_t port)
+{
+	sockets[i].types = SOCKET_DATAGRAM;
+	sockets[sid].port = port;
 }

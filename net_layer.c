@@ -14,7 +14,7 @@
 enum NetControl {ARPReq = 0, ARPAck, NETData};
 
 #define RETRY_TIME	300
-#define RETRY_COUNT	3
+#define RETRY_COUNT	5
 
 QueueHandle_t net_rx, net_ack;
 
@@ -194,7 +194,7 @@ void net_rx_task(void *param)
 #endif
 
 loop:
-	while (xQueueReceive(llc_rx, &pkt, portMAX_DELAY) != pdTRUE);
+	llc_rx(&pkt);
 
 	struct net_buffer *packet = pkt.payload;
 	if (pkt.len != packet->Length + NET_PKT_MIN_SIZE) {
