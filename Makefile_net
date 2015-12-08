@@ -1,3 +1,3 @@
 SRC	+= net_layer.c
 
-DEFS	+= -DNET_DEBUG=3
+DEFS	+= -DNET_DEBUG=1
