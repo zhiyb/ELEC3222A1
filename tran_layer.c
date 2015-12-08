@@ -27,7 +27,7 @@ struct app_packet
 	uint8_t addr;
 	uint8_t *data;
 }
-void pack(struct package pck, uint8_t len, char *str)
+void pack(struct socket soc, struct package pck, uint8_t len, char *str, uint8_t addr)
 {
 	uint8_t length;
 	pck.src_port = PORT;
@@ -52,7 +52,7 @@ void pack(struct package pck, uint8_t len, char *str)
 			pck.checksum += control[1];
 			pck.checksum += control[2];
 			length = pck.length + STRUCT_SIZE;
-			net_tx(soc.address, length, &pck);
+			net_tx(addr, length, &pck);
 		}
 		else
 		{
@@ -69,12 +69,12 @@ void pack(struct package pck, uint8_t len, char *str)
 			pck.checksum += control[1];
 			pck.checksum += control[2];
 			length = pck.length + STRUCT_SIZE;
-			net_tx(soc.address, length, &pck);
+			net_tx(addr, length, &pck);
 		}
 	}
 }
 
-void tran_tx(struct socket soc, uint8_t len, const void *data)
+void tran_tx(struct socket soc, uint8_t len, const void *data, uint8_t addr)
 {
 //	uint8_t length = STRUCT_SIZE + len;
 	struct package buf;
@@ -91,8 +91,8 @@ void tran_tx(struct socket soc, uint8_t len, const void *data)
 		} else
 			break;
 	}
-	pack(buf, len, data);
-		
+	pack(soc, buf, len, data, uint8_t addr);
+	vPortFree(buf);		
 }
 void tran_rx_task(void *param)
 {
@@ -150,7 +150,10 @@ loop:
 
 					//if(pck -> control[2] == 1)
 					//{
-						memcpy(apck.data[len], pck -> data, pck -> length);
+						
+						if ((*(apck.data) = pvPortMalloc(sizeof(pck -> app_data))) == 0)
+							return;
+						memcpy(apck.data, pck -> app_data, pck -> length);
 						apck.addr = soc.address;
 						apck.len = pck -> length;
 							while(xQueueSendToBack(sockets[i].queue, apck, portMAX_DELAY) != pdTRUE);
@@ -211,3 +214,13 @@ uint8_t rec_from(uint8_t sid, void *buf, uint8_t len, uint8_t addr)
 	buf[len] = '\0';
 	return len;
 }
+
+uint8_t sendto(uint8_t sid, void *buf, uint8_t len, uint8_t addr)
+{
+	//if(socket[i])
+	socket[sid].sport = 1;
+	socket[sid].port = 233;
+	socket[sid].types = SOCKET_DATAGRAM;	
+	tran_tx(socket[sid], len, buf, addr);
+	socket[i].status = SOCKET_FREE;	
+}	

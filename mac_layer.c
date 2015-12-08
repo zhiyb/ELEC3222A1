@@ -263,7 +263,7 @@ uint8_t mac_address()
 
 void mac_init()
 {
-	mac_rx = xQueueCreate(2, sizeof(struct mac_frame));
+	mac_rx = xQueueCreate(6, sizeof(struct mac_frame));
 	while ((mac_semaphore = xSemaphoreCreateMutex()) == NULL);
 	while (xTaskCreate(mac_rx_task, "MAC RX", configMINIMAL_STACK_SIZE, NULL, tskHIGH_PRIORITY, NULL) != pdPASS);
 }

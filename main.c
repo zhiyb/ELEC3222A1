@@ -55,14 +55,21 @@ uint8_t c2hex(uint8_t c)
 
 void app_rx_task(void *param)
 {
-	static struct net_packet_t pkt;
+	static struct apck pkt;
+	uint8_t listenfd;
+	listenfd = socket();
+	bind(listenfd, 233);
 	puts_P(PSTR("\e[96mAPP RX task initialised."));
 
 loop:
-	while (xQueueReceive(socket[i], &pkt, 0) != pdTRUE);
-	uint8_t *ptr = pkt.payload;
-	uint8_t len = pkt.len;
-
+	//while (xQueueReceive(socket[i], &pkt, 0) != pdTRUE);
+	uint8_t len;
+	uint8_t *buf;
+	uint8_t addr;
+	//uint8_t *ptr = pkt.payload;
+	//uint8_t len = pkt.len;
+	rec_from(listenfd, &pkt, len, addr);
+#if 0
 	if (*ptr == 'L') {		// RGB LED update
 		uint8_t length = len - 1;
 		ptr++;
@@ -100,9 +107,9 @@ loop:
 			mask >>= 1;
 		}
 	}
-
+#endif
 print:
-	ptr = pkt.payload;
+	buf = pkt.data;
 	uart0_lock();
 	printf_P(PSTR("\e[92mReceived from %02x: "), pkt.addr);
 	while (len--) {
@@ -114,7 +121,7 @@ print:
 	}
 	putchar('\n');
 	uart0_unlock();
-	vPortFree(pkt.ptr);
+	vPortFree(pkt.data);
 
 	goto loop;
 }
@@ -137,7 +144,8 @@ void app_task(void *param)
 	uint8_t report = 0;
 	uint16_t count = 0;
 	uint32_t notify;
-
+	// Send socket
+	uint8_t sendfd;
 	// UART related
 	static char uartBuffer[64], *uartPtr;
 	static uint8_t uartOffset = 0, uartSending = 0;
@@ -154,7 +162,9 @@ poll:
 	if (xTaskNotifyWait(0, ULONG_MAX, &notify, 20) != pdTRUE) {
 		// Start UART message transmission
 		if (uartSending) {
-			uint8_t status = net_tx(dest, uartOffset, uartBuffer);
+			sendfd = socket();
+
+			uint8_t status = sendto(sendfd, uartOffset, uartBuffer, dest);
 
 			uart0_lock();
 			printf_P(PSTR("\e[91mStation %02x/%02x, "), net_address(), mac_address());
@@ -175,8 +185,9 @@ poll:
 			memcpy(string + 8 + 6, buffer, 6);
 			uint8_t len;
 			len = sizeof(string) > 121 ? 121 : sizeof(string);
-
-			uint8_t status = net_tx(dest, len, string);
+			
+			sendfd = socket();	
+			uint8_t status = sendto(sendfd, len, string, dest);
 
 			uart0_lock();
 			printf_P(PSTR("\e[91mStation %02x/%02x, "), net_address(), mac_address());
