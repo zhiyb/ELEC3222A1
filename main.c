@@ -133,7 +133,9 @@ void app_task(void *param)
 	static char string[] = "Station ?, No ??????. Hello, world! This is ELEC3222-A1 group. The DLL frame is 32 bytes maximum, but NET packet can be 128 bytes";
 	static uint8_t dest = 0;
 	static char buffer[7];
+#ifdef AUTO_REPORT
 	uint8_t report = 0;
+#endif
 	uint16_t count = 0;
 	uint32_t notify;
 
@@ -187,10 +189,12 @@ poll:
 				count++;
 		}
 
+#ifdef AUTO_REPORT
 		// Report memory usage
 		if (report == 0)
 			app_report();
 		report = report == 9 ? 0 : report + 1;
+#endif
 		goto poll;
 	}
 
