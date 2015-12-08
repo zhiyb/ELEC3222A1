@@ -40,12 +40,24 @@ struct net_arp_t {
 } *arp;
 
 // Pointer to checksum field
-#define CHECKSUM(s)	((uint16_t *)(&(s)->TRAN_Segment + (s)->Length))
+#define CHECKSUM(s)	((uint16_t *)((s)->TRAN_Segment + (s)->Length))
 
 static EEMEM uint8_t NVNETAddress = ADDRESS;
 static uint8_t net_addr;
 
 void net_rx_task(void *param);
+
+void net_report()
+{
+	uint8_t rec = 0;
+	struct net_arp_t **ptr = &arp;
+	while (*ptr != NULL) {
+		rec++;
+		ptr = &(*ptr)->next;
+	}
+
+	printf_P(PSTR("NET: ARP entries: %u\n"), rec);
+}
 
 uint8_t net_address(void)
 {
@@ -88,7 +100,7 @@ void net_arp_update(uint8_t address, uint8_t mac)
 		ptr = &(*ptr)->next;
 	}
 	if ((*ptr = pvPortMalloc(sizeof(struct net_arp_t))) == 0)
-		return;
+		return; //exit function when fail to allocate new memory
 	(*ptr)->addr = address;
 	(*ptr)->mac = mac;
 	(*ptr)->next = 0;
@@ -102,7 +114,7 @@ void net_init()
 	while ((net_ack = xQueueCreate(1, sizeof(struct net_ack_t))) == NULL);
 #if NET_DEBUG > 0
 	while (xTaskCreate(net_rx_task, "NET RX", 160, NULL, tskPROT_PRIORITY, NULL) != pdPASS);
-#else
+#else //NET_BEBUG is 0 when not defined
 	while (xTaskCreate(net_rx_task, "NET RX", 120, NULL, tskPROT_PRIORITY, NULL) != pdPASS);
 	//while (xTaskCreate(net_rx_task, "NET RX", configMINIMAL_STACK_SIZE, NULL, tskPROT_PRIORITY, NULL) != pdPASS);
 #endif
@@ -125,7 +137,7 @@ uint8_t net_tx(uint8_t address, uint8_t len, const void *data)
 		} else
 			break;
 	}
-#if LLC_DEBUG > 1
+#if NET_DEBUG > 1
 	printf_P(PSTR(ESC_BLUE "NET-TX,%u;"), address);
 #endif
 	buffer->SRC_Address = net_address();
@@ -147,19 +159,22 @@ findMAC:
 	buffer->Control = ARPReq;
 	buffer->Length = 0;
 
-	uint8_t *ptr = (uint8_t *)buffer;
-	uint16_t checksum = 0;
-	{
-		uint8_t len = length - 2;
-		while (len--)
+	{	// Compute checksum
+		uint8_t *ptr = (uint8_t *)buffer;
+		uint16_t checksum = 0;
+		uint8_t check_len = NET_PKT_MIN_SIZE - 2;
+		while (check_len--)
 			checksum += *ptr++;
+		// Store checksum to its position in buffer
+		memcpy(CHECKSUM(buffer), &checksum, 2);
 	}
-	*CHECKSUM(buffer) = checksum;
 
 	llc_tx(DL_UNITDATA, MAC_BROADCAST, NET_PKT_MIN_SIZE, buffer);
 	while (!llc_written());
 
 	struct net_ack_t ack;
+	
+	// Reset a queue to its original empty state
 	xQueueReset(net_ack);
 	if (xQueueReceive(net_ack, &ack, RETRY_TIME) != pdTRUE && ack.addr != address && ack.mac != MAC_BROADCAST) {
 		if (arp_count-- == 0) {
@@ -173,14 +188,29 @@ findMAC:
 	mac = ack.mac;
 	net_arp_update(address, mac);
 
+	// An empty frame to reset target status
+	if (!llc_tx(DL_DATA_ACK, mac, 0, 0))
+		goto retryARP;
+
 transmit:
-#if LLC_DEBUG > 1
+#if NET_DEBUG > 1
 	printf_P(PSTR(ESC_BLUE "NET-TX-MAC,%u-%u;"), address, mac);
 #endif
 	// Transmit packet
 	buffer->Control = NETData;
 	buffer->Length = len;
 	memcpy(buffer->TRAN_Segment, data, len);
+	
+	{	// Compute checksum
+		uint8_t *ptr = (uint8_t *)buffer;
+		uint16_t checksum = 0;
+		uint8_t check_len = length - 2;
+		while (check_len--)
+			checksum += *ptr++;
+		// Store checksum to its position in buffer
+		memcpy(CHECKSUM(buffer), &checksum, 2);
+	}
+
 	if (!llc_tx(DL_DATA_ACK, mac, length, buffer)) {
 		if (tx_count-- == 0) {
 			vPortFree(buffer);
@@ -202,18 +232,41 @@ void net_rx_task(void *param)
 loop:
 	while (xQueueReceive(llc_rx, &pkt, portMAX_DELAY) != pdTRUE);
 
+	//packet point to the payload
 	struct net_buffer *packet = pkt.payload;
+
 	if (pkt.len != packet->Length + NET_PKT_MIN_SIZE) {
 #if NET_DEBUG > 1
 		fputs_P(PSTR(ESC_MAGENTA "NET-LEN-FAILED;"), stdout);
 #endif
 		goto drop;
 	}
+
+	// Address conflict
+	if (packet->SRC_Address == net_address())
+		net_address_update(net_address() + 1);
+
 	if (packet->DEST_Address != net_address()) {
 #if NET_DEBUG > 1
 		fputs_P(PSTR(ESC_MAGENTA "NET-ADDR-DROP;"), stdout);
 #endif
 		goto drop;
+	}
+
+	{	// Check checksum
+		uint16_t checksum = 0;
+		uint8_t len = pkt.len - 2;
+		uint8_t *ptr = (uint8_t *)packet;
+		while (len--)
+			checksum += *ptr++;
+		uint16_t cksum;
+		memcpy(&cksum, CHECKSUM(packet), 2);
+		if (cksum != checksum) {
+#if NET_DEBUG > 0
+			printf_P(PSTR(ESC_GREY "NET-CKSUM-FAILED,%04x,%04x;"), checksum, cksum);
+#endif 
+			goto drop;
+		}
 	}
 
 	switch (packet->Control) {
@@ -236,6 +289,17 @@ loop:
 			buffer->SRC_Address = net_address();
 			buffer->DEST_Address = packet->SRC_Address;
 			buffer->Length = 0;
+
+			{	// Compute checksum
+				uint8_t *ptr = (uint8_t *)buffer;
+				uint16_t checksum = 0;
+				uint8_t check_len = NET_PKT_MIN_SIZE - 2;
+				while (check_len--)
+					checksum += *ptr++;
+				// Store checksum to its position in buffer
+				memcpy(CHECKSUM(buffer), &checksum, 2);
+			}
+
 			llc_tx(DL_DATA_ACK, pkt.addr, NET_PKT_MIN_SIZE, buffer);
 			vPortFree(packet);
 		}

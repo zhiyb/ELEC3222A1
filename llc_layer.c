@@ -64,6 +64,21 @@ static struct llc_acn_t {
 } acnCache[ACN_CACHE_SIZE];
 static uint8_t lastACN;
 
+void llc_report()
+{
+	uint8_t acnAct = 0, acnRec = 0;
+	struct llc_acn_t *aptr = acnCache;
+	uint8_t i = ACN_CACHE_SIZE;
+	while (i--) {
+		if (aptr->addr != MAC_BROADCAST)
+			acnRec++;
+		if (aptr->buffer != 0)
+			acnAct++;
+		aptr++;
+	}
+	printf_P(PSTR("LLC: recorded: %u, active: %u\n"), acnRec, acnAct);
+}
+
 static void llc_acn_reset(struct llc_acn_t *acn)
 {
 	if (acn->addr != MAC_BROADCAST && acn->buffer)
@@ -367,17 +382,17 @@ loop:
 					pkt.ptr = acn->buffer;
 					pkt.payload = acn->buffer;
 
+					acn->buffer = 0;
+					acn->size = 0;
+
 					// Unable to handle it at the moment
 					if (xQueueSendToBack(llc_rx, &pkt, 0) != pdTRUE) {
-						vPortFree(acn->buffer);
+						vPortFree(pkt.ptr);
 #if LLC_DEBUG > 0
 						fputs_P(PSTR(ESC_GREY "LLC-Q-MLT-FAIL;"), stdout);
 #endif
 						goto drop;
 					}
-
-					acn->buffer = 0;
-					acn->size = 0;
 				}
 			}
 			acn->seq++;

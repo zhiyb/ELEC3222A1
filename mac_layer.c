@@ -116,7 +116,7 @@ loop:
 	data = phy_rx();
 #if MAC_DEBUG > 2
 	if (data == FRAME_HEADER) {
-		fputs_P(PSTR(ESC_WHITE), stdout);
+		fputs_P(PSTR(ESC_GREY), stdout);
 		putchar('^');
 	} else if (data == FRAME_ESCAPE)
 		putchar('\\');
@@ -178,6 +178,8 @@ loop:
 					frame.len = size - FRAME_MIN_SIZE;	// Only payload length
 					frame.ptr = buffer;
 					frame.payload = buffer->payload;
+					if (buffer->src == mac_address())
+						mac_address_update(mac_address() + 1);
 					// Send to upper layer
 					if (xQueueSendToBack(mac_rx, &frame, 0) == pdTRUE) {
 #if MAC_DEBUG > 1
