@@ -89,13 +89,15 @@ loop:
 		rgbLED_refresh();
 	} else if (*ptr == 'G') {	// GPIO control
 		uint8_t mask = 0x80;
-		uint8_t length = len - 1;
-		length = length > 8 ? 8 : length;
+		uint8_t length = 8;
 		while (length--) {
-			if (*++ptr == '0')
+			++ptr;
+			if (*ptr == '0')
 				PORTA &= ~mask;
-			else
+			else if (*ptr == '1')
 				PORTA |= mask;
+			else
+				break;
 			mask >>= 1;
 		}
 	}
