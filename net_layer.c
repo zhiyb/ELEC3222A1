@@ -209,6 +209,11 @@ loop:
 #endif
 		goto drop;
 	}
+
+	// Address conflict
+	if (packet->SRC_Address == net_address())
+		net_address_update(net_address() + 1);
+
 	if (packet->DEST_Address != net_address()) {
 #if NET_DEBUG > 1
 		fputs_P(PSTR(ESC_MAGENTA "NET-ADDR-DROP;"), stdout);
