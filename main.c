@@ -128,6 +128,7 @@ void app_report(void)
 	uart0_lock();
 	printf_P(PSTR("\e[97mReport: heap (free: %u, total: %u, usage: %u%%)\n"), free, total, usage);
 	llc_report();
+	net_report();
 	uart0_unlock();
 }
 
