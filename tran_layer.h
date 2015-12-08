@@ -20,8 +20,7 @@ struct package{
 	uint8_t src_port;
 	uint8_t dest_port;
 	uint8_t length;
-	uint8_t *app_data;
-	uint16_t checksum;
+	uint8_t app_data[0];
 };
 
 struct app_packet

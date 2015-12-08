@@ -182,14 +182,17 @@ poll:
 
 		// Start test string transmission
 		if (!(PINC & _BV(2))) {
+			//puts_P(PSTR("hello"));
 			sprintf(buffer, "%6u", count);
 			memcpy(string + 8 + 6, buffer, 6);
 			uint8_t len;
-			len = sizeof(string) > 121 ? 121 : sizeof(string);
+			len = sizeof(string) > 114 ? 114 : sizeof(string);
 			
-			sendfd = socket();	
+			sendfd = socket();
+				
+			//puts_P(PSTR("socket no problem"));
 			uint8_t status = sendto(sendfd, string, len, dest);
-
+			//puts_P(PSTR("no problem"));
 			uart0_lock();
 			printf_P(PSTR("\e[91mStation %02x/%02x, "), net_address(), mac_address());
 			printf_P(PSTR("sent %u (DEST: %02x, SIZE: %u): "), count, dest, len);
