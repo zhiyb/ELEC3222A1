@@ -1,3 +1,3 @@
 SRC	+= llc_layer.c
 
-DEFS	+= -DLLC_DEBUG=1
+DEFS	+= -DLLC_DEBUG=3
