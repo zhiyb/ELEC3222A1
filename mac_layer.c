@@ -5,6 +5,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <ctype.h>
+#include <colours.h>
 #include "llc_layer.h"
 #include "mac_layer.h"
 #include "phy_layer.h"
@@ -48,6 +49,10 @@ static void mac_tx_data(uint8_t data)
 
 void mac_tx(uint8_t addr, void *data, uint8_t len)
 {
+#if MAC_DEBUG > 1
+	printf_P(PSTR(ESC_BLUE "MAC-TX,%02x-%u;"), addr, len);
+#endif
+
 	// Thread safe: lock mutex
 	while (xSemaphoreTake(mac_semaphore, portMAX_DELAY) != pdTRUE);
 
@@ -103,7 +108,7 @@ void mac_rx_task(void *param)
 	uint8_t *ptr = 0, size = 0, data;
 	uint16_t checksum = 0;
 #if MAC_DEBUG > 0
-	puts_P(PSTR("\e[96mMAC RX task initialised."));
+	puts_P(PSTR(ESC_CYAN "MAC RX task initialised."));
 #endif
 
 loop:
@@ -111,7 +116,7 @@ loop:
 	data = phy_rx();
 #if MAC_DEBUG > 2
 	if (data == FRAME_HEADER) {
-		fputs_P(PSTR("\e[90m"), stdout);
+		fputs_P(PSTR(ESC_WHITE), stdout);
 		putchar('^');
 	} else if (data == FRAME_ESCAPE)
 		putchar('\\');
@@ -130,8 +135,8 @@ loop:
 	case WaitingHeader:
 		if (data != FRAME_HEADER) {
 			phy_receive();	// Reset receiver
-#if MAC_DEBUG > 1
-			fputs_P(PSTR("\e[90mMAC-RST;"), stdout);
+#if MAC_DEBUG > 2
+			fputs_P(PSTR(ESC_MAGENTA "MAC-RST;"), stdout);
 #endif
 			break;
 		}
@@ -176,30 +181,30 @@ loop:
 					// Send to upper layer
 					if (xQueueSendToBack(mac_rx, &frame, 0) == pdTRUE) {
 #if MAC_DEBUG > 1
-						fputs_P(PSTR("\e[90mMAC-RECV;"), stdout);
+						fputs_P(PSTR(ESC_YELLOW "MAC-RECV;"), stdout);
 #endif
 						buffer = pvPortMalloc(sizeof(struct mac_buffer_t));
 						if (buffer == 0) {
 							status = WaitingHeader;
 #if MAC_DEBUG >= 0
-							fputs_P(PSTR("\e[90mMAC-MEM-FAIL;"), stdout);
+							fputs_P(PSTR(ESC_GREY "MAC-MEM-FAIL;"), stdout);
 #endif
 							goto loop;
 						}
 					} else {
 #if MAC_DEBUG > 0
-						fputs_P(PSTR("\e[90mMAC-Q-FAIL;"), stdout);
+						fputs_P(PSTR(ESC_GREY "MAC-Q-FAIL;"), stdout);
 #endif
 					}
 				} else {
-#if MAC_DEBUG > 0
-					fputs_P(PSTR("\e[93mMAC-DROP;"), stdout);
+#if MAC_DEBUG > 1
+					fputs_P(PSTR(ESC_MAGENTA "MAC-DROP;"), stdout);
 #endif
 				}
 			} else {
 				status = ReceivingData;
-#if MAC_DEBUG > 1
-				fputs_P(PSTR("\e[90mMAC-RST;"), stdout);
+#if MAC_DEBUG > 2
+				fputs_P(PSTR(ESC_MAGENTA "MAC-RST;"), stdout);
 #endif
 			}
 
@@ -210,8 +215,8 @@ loop:
 			goto loop;
 		case FRAME_ESCAPE:
 			status = ReceivingEscaped;
-#if MAC_DEBUG > 1
-			fputs_P(PSTR("\e[90mMAC-ESC;"), stdout);
+#if MAC_DEBUG > 2
+			fputs_P(PSTR(ESC_GREY "MAC-ESC;"), stdout);
 #endif
 			goto loop;
 		}
@@ -229,8 +234,8 @@ loop:
 		if (size == 1)	// Destination address received
 			if (buffer->dest != mac_address() && buffer->dest != MAC_BROADCAST) {
 				status = WaitingHeader;	// Not for this station
-#if MAC_DEBUG > 1
-				fputs_P(PSTR("\e[90mMAC-SKIP;"), stdout);
+#if MAC_DEBUG > 2
+				fputs_P(PSTR(ESC_GREY "MAC-SKIP;"), stdout);
 #endif
 			}
 #endif
