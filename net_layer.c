@@ -147,13 +147,15 @@ findMAC:
 	buffer->Control = ARPReq;
 	buffer->Length = 0;
 
-	uint8_t *ptr = (uint8_t *)buffer;
-	uint16_t checksum = 0;
-	uint8_t check_len = length - 2;
-	while (check_len--)
-		checksum += *ptr++;
-	// Store checksum to its position in buffer	
-	*CHECKSUM(buffer) = checksum;
+	{	// Compute checksum
+		uint8_t *ptr = (uint8_t *)buffer;
+		uint16_t checksum = 0;
+		uint8_t check_len = length - 2;
+		while (check_len--)
+			checksum += *ptr++;
+		// Store checksum to its position in buffer
+		*CHECKSUM(buffer) = checksum;
+	}
 
 	llc_tx(DL_UNITDATA, MAC_BROADCAST, NET_PKT_MIN_SIZE, buffer);
 	while (!llc_written());
@@ -173,6 +175,10 @@ findMAC:
 	// ARP found
 	mac = ack.mac;
 	net_arp_update(address, mac);
+
+	// An empty frame to reset target status
+	if (!llc_tx(DL_DATA_ACK, mac, 0, 0))
+		goto retryARP;
 
 transmit:
 #if LLC_DEBUG > 1
@@ -205,16 +211,7 @@ loop:
 
 	//packet point to the payload
 	struct net_buffer *packet = pkt.payload;
-	uint16_t checksum = 0;
-	uint8_t *ptr = (uint8_t *)packet;
-	while (pkt.len --)
-		checksum += *(ptr)++;
-	if (*CHECKSUM(packet)) != checksum)
-#if NET_DEBUG > 1
-		FPUTS_P(PSTR("\e[90mNET-CHECKSUM-FAILED;"), stdout);
-#endif 
-		goto drop;
-	
+
 	if (pkt.len != packet->Length + NET_PKT_MIN_SIZE) {
 #if NET_DEBUG > 1
 		fputs_P(PSTR(ESC_MAGENTA "NET-LEN-FAILED;"), stdout);
@@ -231,6 +228,20 @@ loop:
 		fputs_P(PSTR(ESC_MAGENTA "NET-ADDR-DROP;"), stdout);
 #endif
 		goto drop;
+	}
+
+	{	// Check checksum
+		uint16_t checksum = 0;
+		uint8_t len = pkt.len - 2;
+		uint8_t *ptr = (uint8_t *)packet;
+		while (len--)
+			checksum += *ptr++;
+		if (*CHECKSUM(packet) != checksum) {
+#if NET_DEBUG > 1
+			fputs_P(PSTR(ESC_GREY "NET-CKSUM-FAILED;"), stdout);
+#endif 
+			goto drop;
+		}
 	}
 
 	switch (packet->Control) {
