@@ -147,13 +147,15 @@ findMAC:
 	buffer->Control = ARPReq;
 	buffer->Length = 0;
 
-	uint8_t *ptr = (uint8_t *)buffer;
-	uint16_t checksum = 0;
-	uint8_t check_len = length - 2;
-	while (check_len--)
-		checksum += *ptr++;
-	// Store checksum to its position in buffer	
-	*CHECKSUM(buffer) = checksum;
+	{	// Compute checksum
+		uint8_t *ptr = (uint8_t *)buffer;
+		uint16_t checksum = 0;
+		uint8_t check_len = length - 2;
+		while (check_len--)
+			checksum += *ptr++;
+		// Store checksum to its position in buffer
+		*CHECKSUM(buffer) = checksum;
+	}
 
 	llc_tx(DL_UNITDATA, MAC_BROADCAST, NET_PKT_MIN_SIZE, buffer);
 	while (!llc_written());
@@ -173,6 +175,10 @@ findMAC:
 	// ARP found
 	mac = ack.mac;
 	net_arp_update(address, mac);
+
+	// An empty frame to reset target status
+	if (!llc_tx(DL_DATA_ACK, mac, 0, 0))
+		goto retryARP;
 
 transmit:
 #if LLC_DEBUG > 1
