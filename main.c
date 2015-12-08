@@ -292,7 +292,7 @@ void init()
 	uart0_init();
 	stdout = uart0_fd();
 	stdin = uart0_fd();
-	puts_P(PSTR("\x0c\e[96mStarting up..."));
+	puts_P(PSTR("\e[0m\x0c\e[96mStarting up..."));
 
 	phy_init();
 	mac_init();
