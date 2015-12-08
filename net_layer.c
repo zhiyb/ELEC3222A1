@@ -88,7 +88,7 @@ void net_arp_update(uint8_t address, uint8_t mac)
 		ptr = &(*ptr)->next;
 	}
 	if ((*ptr = pvPortMalloc(sizeof(struct net_arp_t))) == 0)
-		return;
+		return; //exit function when fail to allocate new memory
 	(*ptr)->addr = address;
 	(*ptr)->mac = mac;
 	(*ptr)->next = 0;
@@ -102,7 +102,7 @@ void net_init()
 	while ((net_ack = xQueueCreate(1, sizeof(struct net_ack_t))) == NULL);
 #if NET_DEBUG > 0
 	while (xTaskCreate(net_rx_task, "NET RX", 160, NULL, tskPROT_PRIORITY, NULL) != pdPASS);
-#else
+#else //NET_BEBUG is 0 when not defined
 	while (xTaskCreate(net_rx_task, "NET RX", 120, NULL, tskPROT_PRIORITY, NULL) != pdPASS);
 	//while (xTaskCreate(net_rx_task, "NET RX", configMINIMAL_STACK_SIZE, NULL, tskPROT_PRIORITY, NULL) != pdPASS);
 #endif
@@ -146,17 +146,18 @@ findMAC:
 
 	uint8_t *ptr = (uint8_t *)buffer;
 	uint16_t checksum = 0;
-	{
-		uint8_t len = length - 2;
-		while (len--)
-			checksum += *ptr++;
-	}
+	uint8_t check_len = length - 2;
+	while (check_len--)
+		checksum += *ptr++;
+	// Store checksum to its position in buffer	
 	*CHECKSUM(buffer) = checksum;
 
 	llc_tx(DL_UNITDATA, MAC_BROADCAST, NET_PKT_MIN_SIZE, buffer);
 	while (!llc_written());
 
 	struct net_ack_t ack;
+	
+	// Reset a queue to its original empty state
 	xQueueReset(net_ack);
 	if (xQueueReceive(net_ack, &ack, RETRY_TIME) != pdTRUE && ack.addr != address && ack.mac != MAC_BROADCAST) {
 		if (arp_count-- == 0) {
@@ -196,7 +197,18 @@ void net_rx_task(void *param)
 loop:
 	llc_rx(&pkt);
 
+	//packet point to the payload
 	struct net_buffer *packet = pkt.payload;
+	uint16_t checksum = 0;
+	uint8_t *ptr = (uint8_t *)packet;
+	while (pkt.len --)
+		checksum += *(ptr)++;
+	if (*CHECKSUM(packet)) != checksum)
+#if NET_DEBUG > 1
+		FPUTS_P(PSTR("\e[90mNET-CHECKSUM-FAILED;"), stdout);
+#endif 
+		goto drop;
+	
 	if (pkt.len != packet->Length + NET_PKT_MIN_SIZE) {
 #if NET_DEBUG > 1
 		fputs_P(PSTR("\e[90mNET-LEN-FAILED;"), stdout);
