@@ -176,7 +176,7 @@ findMAC:
 	
 	// Reset a queue to its original empty state
 	xQueueReset(net_ack);
-	if (xQueueReceive(net_ack, &ack, RETRY_TIME) != pdTRUE && ack.addr != address && ack.mac != MAC_BROADCAST) {
+	if (xQueueReceive(net_ack, &ack, RETRY_TIME) != pdTRUE || ack.addr != address || ack.mac == MAC_BROADCAST) {
 		if (arp_count-- == 0) {
 			vPortFree(buffer);
 			return 0;
@@ -269,8 +269,10 @@ loop:
 		}
 	}
 
+	
 	switch (packet->Control) {
 	case ARPReq:
+
 #if NET_DEBUG > 2
 		fputs_P(PSTR(ESC_YELLOW "NET-ARP-REQ;"), stdout);
 #endif
@@ -304,6 +306,7 @@ loop:
 			vPortFree(packet);
 		}
 		goto drop;
+		
 	case ARPAck:
 #if NET_DEBUG > 2
 		fputs_P(PSTR(ESC_YELLOW "NET-ARP-ACK;"), stdout);
@@ -319,6 +322,7 @@ loop:
 			}
 		}
 		goto drop;
+	
 	case NETData:
 #if NET_DEBUG > 2
 		fputs_P(PSTR(ESC_YELLOW "NET-DATA;"), stdout);
