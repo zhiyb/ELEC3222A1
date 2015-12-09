@@ -138,7 +138,7 @@ uint8_t net_tx(uint8_t address, uint8_t len, const void *data)
 			break;
 	}
 #if NET_DEBUG > 1
-	printf_P(PSTR(ESC_BLUE "NET-TX,%u,%u;"), address, xPortGetFreeHeapSize());
+	printf_P(PSTR(ESC_BLUE "NET-TX,%02x,%u;"), address, xPortGetFreeHeapSize());
 #endif
 	buffer->SRC_Address = net_address();
 	buffer->DEST_Address = address;
