@@ -15,19 +15,30 @@ extern "C" {
 
 #define TRAN_PACKET_MAX_SIZE	121
 
+struct package{
+	uint8_t control[2];
+	uint8_t src_port;
+	uint8_t dest_port;
+	uint8_t length;
+	uint8_t app_data[0];
+};
+
+struct app_packet
+{
+	uint8_t len;
+	uint8_t addr;
+	uint8_t *data;
+};
 // Initialisation
 void tran_init();
 
-// Interface to be used by APP(s)
-// Pack the data into the structure as the design
-void pack(void);
-// Transfer function for the transport layer
-void tran_tx(struct socket soc, uint8_t len, const void *data);
-// Receiving task in transport layer
-void tran_rx_task(void *param);
 // Read data from socket queue
-uint8_t rec_from(uint8_t sid. void *buf, uint8_t len, uint8_t addr);
-externn QueueHandle_t tran_tx, tran_rx;
+uint8_t rec_from(uint8_t sid, void *buf, uint8_t len, uint8_t addr);
+// Send data
+uint8_t sendto(uint8_t sid, void *buf, uint8_t len, uint8_t addr);
+
+
+extern QueueHandle_t tran_rx;
 #ifdef __cplusplus
 }
 #endif

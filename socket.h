@@ -24,7 +24,7 @@ struct socket_t {
 	// enum SocketStatus
 	uint8_t status;
 	uint8_t type;
-	QueueHandler queue;
+	QueueHandle_t queue;
 };
 
 extern struct socket_t sockets[MAX_SOCKETS];

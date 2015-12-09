@@ -12,21 +12,17 @@
 extern "C" {
 #endif
 
-// Net layer: routing & address handle
+// Interface with upper TRAN layer
+// Net layer: Address seek and store
 
 #define NET_PACKET_MAX_SIZE	128
 
 // Initialisation
 void net_init();
 
-// Interface with upper TRAN layer
-
-// Unacknowledged packet, acknowledged packet
-//enum NET_Primitives {NET_UNITDATA = 0, NET_DATA_ACK};
 
 // Data transfer between NET and upper layer
 struct net_packet_t {
-	//uint8_t pri;	// NET_Primitives
 	uint8_t addr;	// RX: The address of the sending host
 	uint8_t len;	// Data length
 	void *ptr;	// Pointer to frame data on heap (free after use)
