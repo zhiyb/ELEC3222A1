@@ -229,7 +229,6 @@ loop:
 	// Receive 1 frame from MAC queue
 	while (xQueueReceive(mac_rx, &data, portMAX_DELAY) != pdTRUE);
 
-	printf_P(PSTR("MEM-%u;"), xPortGetFreeHeapSize());
 	// Frame size check
 	if (data.len < FRAME_MIN_SIZE || data.len > FRAME_MAX_SIZE)
 		goto drop;
