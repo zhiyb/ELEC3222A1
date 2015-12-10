@@ -1,4 +1,5 @@
 #include "simulation.h"
+#include "simulator.h"
 #include <unistd.h>
 #include <QThreadPool>
 #include <QVector>
@@ -32,7 +33,8 @@ QVector<Task *> vecTask;
 
 void vTaskDelay(int time)
 {
-	usleep(time * 1000);
+	QThread::currentThread()->msleep(time);
+	//usleep(time * 1000);
 }
 
 void xQueueReset(QueueHandle_t queue)
@@ -136,4 +138,14 @@ void taskRun(void (*func)(void *), char *name, void *param)
 	Task *task = new Task(func, param, name);
 	task->setAutoDelete(true);
 	QThreadPool::globalInstance()->start(task);
+}
+
+void vPortFree(void *ptr)
+{
+	sim->memFree(ptr);
+}
+
+void *pvPortMalloc(int size)
+{
+	return sim->memAlloc(size);
 }

@@ -20,11 +20,15 @@ extern addr_t addr;
 class Simulator : public QWidget
 {
 	Q_OBJECT
+	friend class TXTask;
+	friend class RXTask;
 public:
 	explicit Simulator(uint8_t address, QWidget *parent = 0);
 	~Simulator();
 	void transmit(uint8_t addr, void *ptr, int len);
 	void received(uint8_t addr, void *ptr, int len);
+	void *memAlloc(int size);
+	void memFree(void *ptr);
 
 signals:
 
@@ -33,11 +37,14 @@ public slots:
 	void read();
 
 private:
-	QString dataString(char *ptr, uint8_t len);
+	static QString dataString(char *ptr, uint8_t len);
+	void updateMemList();
 
+	QMap<void *, int> mapMem;
 	QUdpSocket *socket;
 	QCheckBox *pri;
 	QLineEdit *input, *address;
+	QListWidget *tx, *rx, *mem;
 	QListWidget *transmitLog, *receivedLog;
 	QPushButton *send;
 };

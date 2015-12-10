@@ -9,8 +9,6 @@ extern "C" {
 
 #define printf_P(...)	printf(__VA_ARGS__)
 #define PSTR(s)		s
-#define vPortFree(ptr)	free(ptr)
-#define pvPortMalloc(s)	malloc(s)
 #define pdPASS		1
 #define pdTRUE		1
 #define pdFALSE		0
@@ -20,6 +18,9 @@ extern "C" {
 
 typedef int QueueHandle_t;
 typedef int SemaphoreHandle_t;
+
+void vPortFree(void *ptr);
+void *pvPortMalloc(int size);
 
 void vTaskDelay(int time);
 void xQueueReset(QueueHandle_t queue);
