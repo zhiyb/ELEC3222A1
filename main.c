@@ -140,7 +140,7 @@ void app_report(void)
 void app_task(void *param)
 {
 	static char string[] = "Station ?, No ??????. Hello, world! This is ELEC3222-A1 group. The DLL frame is 32 bytes maximum, but NET packet can be 128 bytes";
-	static uint8_t dest = 0;
+	static uint8_t dest = 1;
 	static char buffer[7];
 	uint8_t report = 0;
 	uint16_t count = 0;
@@ -186,11 +186,12 @@ poll:
 			sprintf(buffer, "%6u", count);
 			memcpy(string + 8 + 6, buffer, 6);
 			uint8_t len;
-			len = sizeof(string) > 114 ? 114 : sizeof(string);
+			len = sizeof(string) > 10 ? 10 : sizeof(string);
 			
 			sendfd = socket();
 				
-			//puts_P(PSTR("socket no problem"));
+			printf_P(PSTR("the socket id is%d "), sendfd);
+			puts_P(PSTR("socket no problem"));
 			uint8_t status = sendto(sendfd, string, len, dest);
 			//puts_P(PSTR("no problem"));
 			uart0_lock();
