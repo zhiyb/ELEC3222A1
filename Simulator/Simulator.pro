@@ -16,13 +16,12 @@ DEFINES	+= "SIMULATION"
 INCLUDEPATH += .
 
 SOURCES += main.cpp\
-        mainwindow.cpp \
     simulator.cpp \
     ../llc_layer.c \
     simulation.cpp \
     mac_layer_sim.cpp
 
-HEADERS  += mainwindow.h \
+HEADERS  += \
     simulator.h \
     ../llc_layer.h \
     simulation.h \

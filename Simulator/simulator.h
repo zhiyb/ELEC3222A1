@@ -22,8 +22,9 @@ class Simulator : public QWidget
 	Q_OBJECT
 	friend class TXTask;
 	friend class RXTask;
+
 public:
-	explicit Simulator(uint8_t address, QWidget *parent = 0);
+	explicit Simulator(QWidget *parent = 0);
 	~Simulator();
 	void transmit(uint8_t addr, void *ptr, int len);
 	void received(uint8_t addr, void *ptr, int len);
@@ -31,19 +32,30 @@ public:
 	void memFree(void *ptr);
 
 signals:
+	void scrollTransmitLog();
+	void scrollTXLog();
+	void scrollRXLog();
+	void updateMem();
+	void error(QString);
 
 public slots:
 	void write();
 	void read();
 
+private slots:
+	void updateAddr();
+	void updateMemList();
+	void txScroll();
+	void rxScroll();
+	void errorMessage(QString str);
+
 private:
 	static QString dataString(char *ptr, uint8_t len);
-	void updateMemList();
 
 	QMap<void *, int> mapMem;
 	QUdpSocket *socket;
 	QCheckBox *pri;
-	QLineEdit *input, *address;
+	QLineEdit *input, *macAddr, *netAddr, *destAddr;
 	QListWidget *tx, *rx, *mem;
 	QListWidget *transmitLog, *receivedLog;
 	QPushButton *send;
