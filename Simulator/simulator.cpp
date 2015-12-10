@@ -58,18 +58,40 @@ void Simulator::updateMemList()
 	}
 }
 
-Simulator::Simulator(uint8_t address, QWidget *parent) : QWidget(parent)
+void Simulator::txScroll()
+{
+	emit scrollTXLog();
+}
+
+void Simulator::rxScroll()
+{
+	emit scrollRXLog();
+}
+
+void Simulator::errorMessage(QString str)
+{
+	QMessageBox::critical(this, windowTitle(), str);
+}
+
+Simulator::Simulator(QWidget *parent) : QWidget(parent)
 {
 	sim = this;
 	socket = new QUdpSocket(this);
 
 	QVBoxLayout *lay = new QVBoxLayout(this);
-	lay->addWidget(this->address = new QLineEdit());
-	lay->addWidget(pri = new QCheckBox(tr("Request ACK")));
-	lay->addWidget(input = new QLineEdit(tr("Input...")));
-	lay->addWidget(send = new QPushButton(tr("Transmit")));
-
 	QHBoxLayout *hLay;
+	lay->addLayout(hLay = new QHBoxLayout);
+	hLay->addWidget(this->netAddr = new QLineEdit("0"));
+	hLay->addWidget(this->macAddr = new QLineEdit("0"));
+	hLay->addWidget(this->destAddr = new QLineEdit("0"));
+
+	lay->addWidget(input = new QLineEdit(tr("Input...")));
+
+	lay->addLayout(hLay = new QHBoxLayout);
+	hLay->addWidget(pri = new QCheckBox(tr("Request &ACK")));
+	hLay->addWidget(send = new QPushButton(tr("&Transmit")));
+	send->setDefault(true);
+
 	lay->addLayout(hLay = new QHBoxLayout);
 	hLay->addWidget(tx = new QListWidget);
 	hLay->addWidget(rx = new QListWidget);
@@ -79,18 +101,24 @@ Simulator::Simulator(uint8_t address, QWidget *parent) : QWidget(parent)
 	hLay->addWidget(transmitLog = new QListWidget);
 	hLay->addWidget(receivedLog = new QListWidget);
 
-	addr.mac = address;
-	addr.net = address;
-	socket->bind(BASE + address);
-
-	connect(send, SIGNAL(clicked(bool)), this, SLOT(write()));
-	connect(socket, SIGNAL(readyRead()), this, SLOT(read()));
+	addr.mac = 0;
+	addr.net = 0;
+	updateAddr();
 
 	sim_start();
 
 	RXTask *task = new RXTask;
 	task->setAutoDelete(true);
 	QThreadPool::globalInstance()->start(task);
+
+	connect(send, SIGNAL(clicked(bool)), this, SLOT(write()));
+	connect(socket, SIGNAL(readyRead()), this, SLOT(read()));
+	connect(this, SIGNAL(scrollTransmitLog()), transmitLog, SLOT(scrollToBottom()));
+	connect(this, SIGNAL(updateMem()), this, SLOT(updateMemList()));
+	connect(this, SIGNAL(scrollTXLog()), tx, SLOT(scrollToBottom()));
+	connect(this, SIGNAL(scrollRXLog()), rx, SLOT(scrollToBottom()));
+	connect(macAddr, SIGNAL(textChanged(QString)), this, SLOT(updateAddr()));
+	connect(netAddr, SIGNAL(textChanged(QString)), this, SLOT(updateAddr()));
 }
 
 Simulator::~Simulator()
@@ -101,7 +129,7 @@ Simulator::~Simulator()
 void Simulator::write()
 {
 	QString str(input->text());
-	TXTask *task = new TXTask(pri->isChecked() ? DL_DATA_ACK : DL_UNITDATA, address->text().toUInt(0, 16), str.length(), str.toLocal8Bit().data());
+	TXTask *task = new TXTask(pri->isChecked() ? DL_DATA_ACK : DL_UNITDATA, destAddr->text().toUInt(0, 16), str.length(), str.toLocal8Bit().data());
 	task->setAutoDelete(true);
 	QThreadPool::globalInstance()->start(task);
 }
@@ -120,8 +148,19 @@ void Simulator::read()
 		uint8_t addr = senderPort - BASE;
 		uint8_t len = datagram.size();
 		receivedLog->addItem(tr("ADDR %1, LED %2: %3").arg(addr, 0, 16).arg(len).arg(dataString(datagram.data(), len)));
-		receivedLog->setCurrentRow(receivedLog->count() - 1);
+		receivedLog->scrollToBottom();
 		sim_rx_handle(addr, datagram.data(), len);
+	}
+}
+
+void Simulator::updateAddr()
+{
+	addr.mac = macAddr->text().toUInt(0, 16);
+	addr.net = netAddr->text().toUInt(0, 16);
+	socket->close();
+	if (socket->bind(BASE + addr.mac)) {
+		QString str = tr("Simulator, mac: %1, net: %2").arg(addr.mac, 0, 16).arg(addr.net, 0, 16);
+		setWindowTitle(str);
 	}
 }
 
@@ -130,31 +169,32 @@ void Simulator::transmit(uint8_t addr, void *ptr, int len)
 	socket->writeDatagram((char *)ptr, len, QHostAddress::LocalHost, BASE + addr);
 	socket->waitForBytesWritten();
 	transmitLog->addItem(tr("ADDR %1, LEN %2: %3").arg(addr, 0, 16).arg(len).arg(dataString((char *)ptr, len)));
-	transmitLog->setCurrentRow(transmitLog->count() - 1);
+	emit scrollTransmitLog();
 }
 
 void *Simulator::memAlloc(int size)
 {
 	void *ptr = malloc(size);
 	mapMem[ptr] = size;
-	updateMemList();
+	emit updateMem();
 	return ptr;
 }
 
 void Simulator::memFree(void *ptr)
 {
 	if (mapMem.remove(ptr) != 1) {
-		QMessageBox::critical(this, tr("Simulator"), tr("Error freeing memory at 0x%1").arg((quint64)ptr, 0, 16));
+		emit error(tr("Error freeing memory at 0x%1").arg((quint64)ptr, 0, 16));
 		return;
 	}
 	free(ptr);
-	updateMemList();
+	emit updateMem();
 }
 
 void TXTask::run()
 {
 	uint8_t ret = llc_tx(pri, addr, data.size(), data.data());
-	sim->tx->addItem(QObject::tr("%1: PRI %2, ADDR %3, LEN %4: %5").arg(ret).arg(pri).arg(addr, 0, 16).arg(data.size()).arg(Simulator::dataString(data.data(), data.size())));
+	sim->tx->addItem(QObject::tr("(%1) P: %2, A: %3, L: %4 => %5").arg(ret).arg(pri).arg(addr, 0, 16).arg(data.size()).arg(Simulator::dataString(data.data(), data.size())));
+	sim->txScroll();
 }
 
 void RXTask::run()
@@ -162,7 +202,8 @@ void RXTask::run()
 loop:
 	llc_packet_t pkt;
 	xQueueReceive(llc_rx, &pkt, -1);
-	sim->rx->addItem(QObject::tr("PRI %1, ADDR %2, LEN %3: %4").arg(pkt.pri).arg(pkt.addr, 0, 16).arg(pkt.len).arg(Simulator::dataString((char *)pkt.payload, pkt.len)));
+	sim->rx->addItem(QObject::tr("P: %1, A: %2, L: %3 => %4").arg(pkt.pri).arg(pkt.addr, 0, 16).arg(pkt.len).arg(Simulator::dataString((char *)pkt.payload, pkt.len)));
+	sim->rxScroll();
 	if (pkt.ptr)
 		sim->memFree(pkt.ptr);
 	goto loop;
