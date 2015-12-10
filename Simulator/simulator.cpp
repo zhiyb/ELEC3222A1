@@ -143,8 +143,11 @@ void *Simulator::memAlloc(int size)
 
 void Simulator::memFree(void *ptr)
 {
+	if (mapMem.remove(ptr) != 1) {
+		QMessageBox::critical(this, tr("Simulator"), tr("Error freeing memory at 0x%1").arg((quint64)ptr, 0, 16));
+		return;
+	}
 	free(ptr);
-	mapMem.remove(ptr);
 	updateMemList();
 }
 
