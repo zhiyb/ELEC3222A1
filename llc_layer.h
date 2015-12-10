@@ -4,9 +4,13 @@
 #include <stdint.h>
 
 // RTOS
+#ifndef SIMULATION
 #include <FreeRTOSConfig.h>
 #include <FreeRTOS.h>
 #include <queue.h>
+#else
+#include "simulation.h"
+#endif
 
 #ifdef __cplusplus
 extern "C" {
