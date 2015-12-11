@@ -88,21 +88,17 @@ static inline void tran_tx(uint8_t sid, uint8_t len, const void *data, uint8_t a
 void tran_rx_task(void *param)
 {
 	static struct net_packet_t tf;
-	struct package *pck;
-	uint8_t len;
-	uint8_t i;
 #if TRAN_DEBUG > 1
 	puts_P(PSTR("\e[96mTRAN RX task initialised.]"));
 #endif
+
 loop: 
 	while(xQueueReceive(net_rx, &tf, portMAX_DELAY) != pdTRUE);
 #ifdef SIMULATION
 	printf("Received: %02x, %u, %p\n", tf.addr, tf.len, tf.payload);
 #endif
-	pck = tf.payload;
-	len = tf.len;
-	if (len != pck -> length + STRUCT_SIZE)
-	{
+	struct package *pck = tf.payload;
+	if (tf.len != pck -> length + STRUCT_SIZE) {
 #if TRAN_DEBUG > 1
 		fputs_P(PSTR("\e[90mTRAN-LEN-FAILED;"), stdout);
 #endif
@@ -110,14 +106,14 @@ loop:
 	}
 
 	struct socket_t *sp = sockets;
-	i = MAX_SOCKETS;
+	uint8_t i = MAX_SOCKETS;
 	while (i--) {
 		if((sp->status == (SOCKET_ACTIVE | SOCKET_DATAGRAM)))
 		{
 			if(pck -> dest_port == sp->port)
 			{
 #if TRAN_DEBUG > 2
-				fputs_P(PSTR(ESC_MAGENTA "TRAN-SOCKET-FOUND;"), stdout);
+				fputs_P(PSTR(ESC_MAGENTA "TRAN-SOCKET;"), stdout);
 #endif
 
 				struct app_packet apck;
@@ -133,7 +129,7 @@ loop:
 #if TRAN_DEBUG > 2
 				fputs_P(PSTR(ESC_YELLOW "TRAN-DATA;"), stdout);
 #endif
-				goto drop;
+				break;
 			}
 		}
 		sp += sizeof(struct socket_t);
@@ -142,19 +138,16 @@ loop:
 	
 drop:
 	if(tf.ptr)
-	{
 		vPortFree(tf.ptr);
-		tf.ptr = 0;
-	}
 	goto loop;
 }
 
 void tran_init()
 {
 #if TRAN_DEBUG > 0
-	while (xTaskCreate(tran_rx_task, "TRAN RX", 160, NULL, tskPROT_PRIORITY, NULL) != pdPASS);
+	while (xTaskCreate(tran_rx_task, "TRAN RX", 240, NULL, tskPROT_PRIORITY, NULL) != pdPASS);
 #else
-	while (xTaskCreate(tran_rx_task, "TRAN RX", 120, NULL, tskPROT_PRIORITY, NULL) != pdPASS);
+	while (xTaskCreate(tran_rx_task, "TRAN RX", 140, NULL, tskPROT_PRIORITY, NULL) != pdPASS);
 #endif
 }
 
@@ -179,7 +172,7 @@ uint8_t soc_socket()
 
 }
 
-uint8_t soc_recfrom(uint8_t sid, void *buf, uint8_t *len, uint8_t *addr, uint8_t *port)
+uint8_t soc_recvfrom(uint8_t sid, void *buf, uint8_t *len, uint8_t *addr, uint8_t *port)
 {
 	if (sid == 0xff)
 		return 0;
@@ -192,8 +185,9 @@ uint8_t soc_recfrom(uint8_t sid, void *buf, uint8_t *len, uint8_t *addr, uint8_t
 	if (app_tem.data) {
 		memcpy(buf, app_tem.data, length);
 		vPortFree(app_tem.data);
+		return length;
 	}
-	return length;
+	return 0;
 }
 
 uint8_t soc_sendto(uint8_t sid, void *buf, uint8_t len, uint8_t addr, uint8_t port)
@@ -202,4 +196,4 @@ uint8_t soc_sendto(uint8_t sid, void *buf, uint8_t len, uint8_t addr, uint8_t po
 		return 0;
 	tran_tx(sid, len, buf, addr, port);
 	return len;
-}	
+}

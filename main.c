@@ -9,6 +9,7 @@
 #include <stdio.h>
 #include <ctype.h>
 #include <uart0.h>
+#include <colours.h>
 #include "socket.h"
 #include "tran_layer.h"
 #include "phy_layer.h"
@@ -60,13 +61,13 @@ uint8_t c2hex(uint8_t c)
 void app_rx_task(void *param)
 {
 	puts_P(PSTR("\e[96mAPP RX task initialised."));
-	uint8_t len;
 	static uint8_t buf[120];
-	uint8_t addr, port;
+	static uint8_t addr, port;
+	static uint8_t len;
 	uint8_t *ptr;
 loop:
 	len = sizeof(buf);
-	soc_recfrom(sid_text, buf, &len, &addr, &port);
+	soc_recvfrom(sid_text, buf, &len, &addr, &port);
 #if 0
 	if (*ptr == 'L') {		// RGB LED update
 		uint8_t length = len - 1;
@@ -109,7 +110,7 @@ loop:
 	//buf = pkt;
 	uart0_lock();
 	ptr = buf;
-	printf_P(PSTR("\e[92mReceived from %02x:%02x: "), addr, port);
+	printf_P(PSTR(ESC_GREEN "Received from %02x:%02x: "), addr, port);
 	while (len--) {
 		uint8_t c =  *ptr++;
 		if (isprint(c))
@@ -119,7 +120,6 @@ loop:
 	}
 	putchar('\n');
 	uart0_unlock();
-	vPortFree(buf);
 
 	goto loop;
 }
@@ -318,8 +318,8 @@ int main()
 {
 	init();
 
-	while (xTaskCreate(app_rx_task, "APP RX", 180, NULL, tskAPP_PRIORITY, &rxTask) != pdPASS);
-	while (xTaskCreate(app_task, "APP task", 240, NULL, tskAPP_PRIORITY, &appTask) != pdPASS);
+	while (xTaskCreate(app_rx_task, "APP RX", 160, NULL, tskAPP_PRIORITY, &rxTask) != pdPASS);
+	while (xTaskCreate(app_task, "APP task", 180, NULL, tskAPP_PRIORITY, &appTask) != pdPASS);
 
 	vTaskStartScheduler();
 	return 1;

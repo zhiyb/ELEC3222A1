@@ -17,7 +17,7 @@
 extern "C" {
 #endif
 
-#define MAX_SOCKETS	16
+#define MAX_SOCKETS	8
 
 enum SocketStatus {SOCKET_ALLOCATED = 0x7f, SOCKET_ACTIVE = 0x80, SOCKET_FREE = 0};
 enum SocketTypes {SOCKET_LISTEN = 0, SOCKET_CONNECTION = 1, SOCKET_DATAGRAM = 2};
@@ -50,7 +50,7 @@ void soc_bind(uint8_t sid, uint8_t port);
 // Alloc a socket
 uint8_t  soc_socket();
 // Read data from socket queue
-uint8_t soc_recfrom(uint8_t sid, void *buf, uint8_t *len, uint8_t *addr, uint8_t *port);
+uint8_t soc_recvfrom(uint8_t sid, void *buf, uint8_t *len, uint8_t *addr, uint8_t *port);
 // Send data
 uint8_t soc_sendto(uint8_t sid, void *buf, uint8_t len, uint8_t addr, uint8_t port);
 
