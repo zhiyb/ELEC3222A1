@@ -14,7 +14,9 @@ struct queue_t {
 };
 
 QVector<queue_t> vecQueue;
+QMutex mutexQueue;
 QVector<QMutex *> vecMutex;
+QMutex mutexMutex;
 
 class Task: public QRunnable
 {
@@ -40,20 +42,22 @@ void vTaskDelay(int time)
 
 void xQueueReset(QueueHandle_t queue)
 {
+	mutexQueue.lock();
 	queue_t q = vecQueue[queue];
+	mutexQueue.unlock();
 	if (q.size == 0)
 		return;
 	q.mutex->lock();
-	while (!q.queue->isEmpty()) {
-		void *ptr = q.queue->dequeue();
-		free(ptr);
-	}
+	while (!q.queue->isEmpty())
+		free(q.queue->dequeue());
 	q.mutex->unlock();
 }
 
 int xQueueReceive(QueueHandle_t queue, void *ptr, int time)
 {
+	mutexQueue.lock();
 	queue_t q = vecQueue[queue];
+	mutexQueue.unlock();
 	if (q.size == 0)
 		return pdFALSE;
 	while (q.queue->isEmpty() && time-- != 0)
@@ -67,25 +71,11 @@ int xQueueReceive(QueueHandle_t queue, void *ptr, int time)
 	return pdTRUE;
 }
 
-int xSemaphoreTake(SemaphoreHandle_t sempr, int time)
-{
-	QMutex *mutex = vecMutex[sempr];
-	if (mutex == 0)
-		return pdFALSE;
-	return mutex->tryLock(time);
-}
-
-void xSemaphoreGive(SemaphoreHandle_t sempr)
-{
-	QMutex *mutex = vecMutex[sempr];
-	if (mutex == 0)
-		return;
-	return mutex->unlock();
-}
-
 int uxQueueSpacesAvailable(QueueHandle_t queue)
 {
+	mutexQueue.lock();
 	queue_t q = vecQueue[queue];
+	mutexQueue.unlock();
 	if (q.size == 0)
 		return 0;
 	return q.queue->count();
@@ -93,7 +83,9 @@ int uxQueueSpacesAvailable(QueueHandle_t queue)
 
 int xQueueSendToBack(QueueHandle_t queue, void *ptr, int time)
 {
+	mutexQueue.lock();
 	queue_t q = vecQueue[queue];
+	mutexQueue.unlock();
 	if (q.size == 0)
 		return pdFALSE;
 	void *p = malloc(q.size);
@@ -111,14 +103,38 @@ QueueHandle_t xQueueCreate(int depth, int size)
 	q.depth = depth;
 	q.queue = new QQueue<void *>;
 	q.mutex = new QMutex;
+	mutexQueue.lock();
 	vecQueue.append(q);
+	mutexQueue.unlock();
 	return vecQueue.count() - 1;
+}
+
+int xSemaphoreTake(SemaphoreHandle_t sempr, int time)
+{
+	mutexMutex.lock();
+	QMutex *mutex = vecMutex[sempr];
+	mutexMutex.unlock();
+	if (mutex == 0)
+		return pdFALSE;
+	return mutex->tryLock(time);
+}
+
+void xSemaphoreGive(SemaphoreHandle_t sempr)
+{
+	mutexMutex.lock();
+	QMutex *mutex = vecMutex[sempr];
+	mutexMutex.unlock();
+	if (mutex == 0)
+		return;
+	return mutex->unlock();
 }
 
 int xSemaphoreCreateMutex()
 {
 	QMutex *mutex = new QMutex;
+	mutexMutex.lock();
 	vecMutex.append(mutex);
+	mutexMutex.unlock();
 	return vecMutex.count() - 1;
 }
 
