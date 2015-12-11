@@ -58,18 +58,19 @@ void app_rx_task(void *param)
 {
 	//static struct apck pkt;
 	uint8_t listenfd;
-	listenfd = socket();
-	bind(listenfd, 233);
+	listenfd = soc_socket();
+	soc_bind(listenfd, 233);
 	puts_P(PSTR("\e[96mAPP RX task initialised."));
 	//while (xQueueReceive(socket[i], &pkt, 0) != pdTRUE);
 	uint8_t len;
-	static uint8_t buf[256];
+	static uint8_t buf[120];
 	uint8_t addr = 0;
 	uint8_t *ptr;
 	//uint8_t *ptr = pkt.payload;
 	//uint8_t len = pkt.len;
 loop:
-	rec_from(listenfd, buf, len, addr);
+	len = sizeof(buf);
+	soc_recfrom(listenfd, buf, &len, &addr);
 #if 0
 	if (*ptr == 'L') {		// RGB LED update
 		uint8_t length = len - 1;
@@ -163,9 +164,9 @@ poll:
 	if (xTaskNotifyWait(0, ULONG_MAX, &notify, 20) != pdTRUE) {
 		// Start UART message transmission
 		if (uartSending) {
-			sendfd = socket();
+			sendfd = soc_socket();
 
-			uint8_t status = sendto(sendfd, uartBuffer, uartOffset, dest);
+			uint8_t status = soc_sendto(sendfd, uartBuffer, uartOffset, dest);
 
 			uart0_lock();
 			printf_P(PSTR("\e[91mStation %02x/%02x, "), net_address(), mac_address());
@@ -188,11 +189,11 @@ poll:
 			uint8_t len;
 			len = sizeof(string) > 10 ? 10 : sizeof(string);
 			
-			sendfd = socket();
+			sendfd = soc_socket();
 				
-			printf_P(PSTR("the socket id is%d "), sendfd);
+			printf_P(PSTR("the socket id is %d\n"), sendfd);
 			puts_P(PSTR("socket no problem"));
-			uint8_t status = sendto(sendfd, string, len, dest);
+			uint8_t status = soc_sendto(sendfd, string, len, dest);
 			//puts_P(PSTR("no problem"));
 			uart0_lock();
 			printf_P(PSTR("\e[91mStation %02x/%02x, "), net_address(), mac_address());
@@ -319,7 +320,7 @@ int main()
 	init();
 
 	while (xTaskCreate(app_rx_task, "APP RX", 180, NULL, tskAPP_PRIORITY, &rxTask) != pdPASS);
-	while (xTaskCreate(app_task, "APP task", 180, NULL, tskAPP_PRIORITY, &appTask) != pdPASS);
+	while (xTaskCreate(app_task, "APP task", 200, NULL, tskAPP_PRIORITY, &appTask) != pdPASS);
 
 	vTaskStartScheduler();
 	return 1;

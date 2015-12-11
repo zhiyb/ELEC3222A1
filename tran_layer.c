@@ -1,13 +1,19 @@
 #include <stdio.h>
-#include <uart0.h>
-#include <avr/io.h>
+
 #include <string.h>
 #include "tran_layer.h"
 #include "net_layer.h"
 #include "socket.h"
-#include <task.h>
 
+#ifndef SIMULATION
+#include <task.h>
+#include <uart0.h>
+#include <avr/io.h>
 #include <avr/pgmspace.h>
+#else
+#include "simulation.h"
+#endif
+
 #define STRUCT_SIZE 7
 #define DATA_SIZE 114
 #define LISTEN_PORT 1
@@ -29,8 +35,6 @@ void pack(struct socket_t soc, uint8_t len, uint8_t *str, uint8_t addr)
 		checksum = 0;
 		ctrl[0] = i;
 		ctrl[1] = ((len < (i + 1) * DATA_SIZE) | (len == (i + 1) * DATA_SIZE));
-		//if ((pck = pvPortMalloc(len - i * DATA_SIZE + STRUCT_SIZE)) == 0)
-		//	return;
 		if(ctrl[1] == 1)
 		{						
 			if ((pck = pvPortMalloc(len - (i * DATA_SIZE) + STRUCT_SIZE)) == 0)
@@ -68,22 +72,9 @@ void tran_tx(struct socket_t soc, uint8_t len, const void *data, uint8_t addr)
 //	uint8_t length = STRUCT_SIZE + len;
 	uint8_t *buf;
 
-	while(1)
-	{
-		buf = pvPortMalloc(len);
-		if(buf == NULL)
-		{
-#if NET_DEBUG >= 0
-			fputs("TRAN-BUFFER-FAILED;", stdout);
-#endif
-			vTaskDelay(RETRY_TIME);
-			continue;			
-		} else
-			break;
-	}
-
+	if((buf = pvPortMalloc(len)) == 0)
+			return;
 	memcpy(buf, data, len);
-
 	puts_P(PSTR("cpy buf no problem"));
 	pack(soc, len, buf, addr);
 	vPortFree(buf);
@@ -105,6 +96,9 @@ void tran_rx_task(void *param)
 #endif
 loop: 
 	while(xQueueReceive(net_rx, &tf, portMAX_DELAY) != pdTRUE);
+#ifdef SIMULATION
+    printf("Received: %02x, %u, %p\n", tf.addr, tf.len, tf.payload);
+#endif
 	//tf = buffer
 	pck = tf.payload;
 	len = tf.len;
@@ -114,7 +108,7 @@ loop:
 		fputs_P(PSTR("\e[90mTRAN-LEN-FAILED;]", stdout);
 #endif
 		goto drop;
-	}
+    }
 #if 0
 	if(pck.dest_port == LISTEN_PORT)
 	{	
@@ -148,16 +142,20 @@ loop:
 					//if(pck -> control[2] == 1)
 					//{
 						
-						if ((apck = pvPortMalloc(sizeof(pck -> app_data) + 2)) == 0)
-							return;
+                        if ((apck = pvPortMalloc(sizeof(struct app_packet))) == 0)
+                            goto drop;
+
+                    if ((apck->data = pvPortMalloc(sizeof(pck->length))) == 0)
+                        goto drop;
 							
-						apck -> addr = sockets[i].address;
+                        apck -> addr = tf.addr;
 						apck -> len = pck -> length;
 						memcpy(apck -> data, pck -> app_data, pck -> length);
 							while(xQueueSendToBack(sockets[i].queue, apck, portMAX_DELAY) != pdTRUE);
 #if TRAN_DEBUG > 3					
 						fputs_P(PSTR("\e[90mTRAN-TRANSFER-DATA;]", stdout);
 #endif
+                                goto drop;
 					//}
 					//else
 					//{
@@ -205,24 +203,26 @@ void tran_init()
 {
 //	while ((tran_rx = xQueueCreate(2, sizeof(struct net_packet_t))) == NULL);
 #if TRAN_DEBUG > 0
-	while (xTaskCreate(tran_rx_task, "TRAN RX", 160, NULL, tskPROT_PRIORITY, NULL) != pdPASS);
+	while (xTaskCreate(tran_rx_task, "TRAN RX", 180, NULL, tskPROT_PRIORITY, NULL) != pdPASS);
 #else
-	while (xTaskCreate(tran_rx_task, "TRAN RX", 160, NULL, tskPROT_PRIORITY, NULL) != pdPASS);
+	while (xTaskCreate(tran_rx_task, "TRAN RX", 180, NULL, tskPROT_PRIORITY, NULL) != pdPASS);
 #endif
 	printf("Tran RX init\n");
 }
 
-uint8_t rec_from(uint8_t sid, void *buf, uint8_t len, uint8_t addr)
+uint8_t soc_recfrom(uint8_t sid, void *buf, uint8_t *len, uint8_t *addr)
 {
-	struct app_packet app_tem;
+    struct app_packet app_tem;
 	while(xQueueReceive(sockets[sid].queue, &app_tem, 0) != pdTRUE);
-	len = app_tem.len;
-	addr = app_tem.addr;
-	buf = app_tem.data;
-	return len;
+    uint8_t length = *len < app_tem.len ? *len : app_tem.len;
+    *len = app_tem.len;
+    *addr = app_tem.addr;
+    memcpy(buf, app_tem.data, length);
+    vPortFree(app_tem.data);
+    return length;
 }
 
-uint8_t sendto(uint8_t sid, void *buf, uint8_t len, uint8_t addr)
+uint8_t soc_sendto(uint8_t sid, void *buf, uint8_t len, uint8_t addr)
 {
 	//if(socket[i])
 	sockets[sid].sport = 1;

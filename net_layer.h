@@ -41,7 +41,7 @@ extern QueueHandle_t net_rx;
 // The data pointed by ptr will not be freed
 // Return:	DL_UNITDATA: always 1
 // 		DL_DATA_ACK: acknowledged or not
-uint8_t net_tx(uint8_t address, uint8_t length, const void *data);
+uint8_t net_tx(uint8_t address, uint8_t len, void *data);
 
 uint8_t net_address(void);
 uint8_t net_address_update(uint8_t addr);

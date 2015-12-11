@@ -3,11 +3,16 @@
 
 #include <stdint.h>
 
+#ifndef SIMULATION
 // RTOS
 #include <FreeRTOSConfig.h>
 #include <FreeRTOS.h>
 #include <queue.h>
+#endif
 
+#ifdef SIMULATION
+#include "simulation.h"
+#endif
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -31,15 +36,15 @@ extern struct socket_t sockets[MAX_SOCKETS];
 
 void socket_init();
 // Alloc a socket
-uint8_t  socket();
+uint8_t  soc_socket();
 // Listen on a port
 void listen(uint8_t sid, uint16_t port);
 // Accept a pending new connection
 uint8_t accept(uint8_t sid);
 // Read from socket buffer
-uint8_t read(uint8_t sid, uint8_t *buffer, uint8_t len);
+uint8_t soc_read(uint8_t sid, uint8_t *buffer, uint8_t len);
 // Bind a socket into listening mode
-void bind(uint8_t sid, uint8_t port);
+void soc_bind(uint8_t sid, uint8_t port);
 //
 #ifdef __cplusplus
 }
