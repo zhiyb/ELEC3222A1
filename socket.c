@@ -11,34 +11,16 @@ void socket_init()
 	uint8_t i = 0;
 	for (i = 0; i < MAX_SOCKETS; i++)
 		sockets[i].status = SOCKET_FREE;
-	printf("socket init");
+	//printf("socket init");
 }
 
-// Alloc a socket
-uint8_t soc_socket()
-{
-	uint8_t i = 0;
-	for (i = 0; i < MAX_SOCKETS; i++)
-	{
-		if(sockets[i].status == SOCKET_FREE)
-		{
-			sockets[i].status = SOCKET_ALLOCATED;
-			//sockets[i].port = port;
-			//xQueueCreate()
-			while ((sockets[i].queue = xQueueCreate(2, sizeof(struct app_packet))) == NULL);
-			return i;
-		}
-	}
-	return 17;
-
-}
+#ifdef SOCKET_TCP
 // Listen on a port
 void soc_listen(uint8_t sid, uint16_t port)
 {
 	struct socket_t *sptr = sockets + sid;
-	(*sptr).type = SOCKET_LISTEN;
 	sptr->port = port;
-	sptr->status = SOCKET_ACTIVE;
+	sptr->status = SOCKET_ACTIVE | SOCKET_DATAGRAM;
  //	sptr->queue = xQueue	
 }
 
@@ -65,10 +47,11 @@ uint8_t soc_read(uint8_t sid, uint8_t *buffer, uint8_t len)
 	//buffer++;
 	return len;
 }
+#endif
 
 void soc_bind(uint8_t sid, uint8_t port)
 {
-    sockets[sid].status = SOCKET_ACTIVE;
-	sockets[sid].type = SOCKET_DATAGRAM;
+	// TODO: if binding on 0, then find a random unused number
+	sockets[sid].status = SOCKET_ACTIVE | SOCKET_DATAGRAM;
 	sockets[sid].port = port;
 }

@@ -6,6 +6,7 @@
 #include "socket.h"
 
 #ifndef SIMULATION
+#include <colours.h>
 #include <task.h>
 #include <uart0.h>
 #include <avr/io.h>
@@ -20,8 +21,24 @@
 #define RETRY_TIME 300
 #define RETRY_LIMIT 3
 
-void pack(struct socket_t soc, uint8_t len, uint8_t *str, uint8_t addr)
+struct package {
+	uint8_t control[2];
+	uint8_t src_port;
+	uint8_t dest_port;
+	uint8_t length;
+	uint8_t app_data[0];
+};
+
+struct app_packet {
+	uint8_t len;
+	uint8_t addr;
+	uint8_t port;
+	uint8_t *data;
+};
+
+static inline void tran_tx(uint8_t sid, uint8_t len, const void *data, uint8_t addr, uint8_t port)
 {
+	const uint8_t *str = data;
 	uint8_t length;
 	uint8_t i;
 	uint8_t j;
@@ -47,8 +64,9 @@ void pack(struct socket_t soc, uint8_t len, uint8_t *str, uint8_t addr)
 				return;
 			pck -> length = DATA_SIZE;
 		}
-		pck -> src_port = soc.sport;
-		pck -> dest_port = soc.port;
+		struct socket_t *sp = sockets + sid;
+		pck -> src_port = sp->port;
+		pck -> dest_port = port;
 		pck -> control[0] = ctrl[0];
 		pck -> control[1] = ctrl[1];
 		//puts_P(PSTR("pack before memcpy no problem"));
@@ -67,31 +85,13 @@ void pack(struct socket_t soc, uint8_t len, uint8_t *str, uint8_t addr)
 	}
 }
 
-void tran_tx(struct socket_t soc, uint8_t len, const void *data, uint8_t addr)
-{
-	//	uint8_t length = STRUCT_SIZE + len;
-	uint8_t *buf;
-
-	if((buf = pvPortMalloc(len)) == 0)
-		return;
-	memcpy(buf, data, len);
-	//puts_P(PSTR("cpy buf no problem"));
-	pack(soc, len, buf, addr);
-	vPortFree(buf);
-	//buf = NULL;
-}
-
 void tran_rx_task(void *param)
 {
-	uint8_t src_addr;
-	//uint8_t *buffer;
-	//uint8_t *data;
 	static struct net_packet_t tf;
 	struct package *pck;
-	struct app_packet *apck = 0;
 	uint8_t len;
 	uint8_t i;
-#if TRAN_DEBUG > 0
+#if TRAN_DEBUG > 1
 	puts_P(PSTR("\e[96mTRAN RX task initialised.]"));
 #endif
 loop: 
@@ -99,89 +99,44 @@ loop:
 #ifdef SIMULATION
 	printf("Received: %02x, %u, %p\n", tf.addr, tf.len, tf.payload);
 #endif
-	//tf = buffer
 	pck = tf.payload;
 	len = tf.len;
 	if (len != pck -> length + STRUCT_SIZE)
 	{
 #if TRAN_DEBUG > 1
-		fputs_P(PSTR("\e[90mTRAN-LEN-FAILED;]", stdout);
-		#endif
-				goto drop;
-	}
-#if 0
-	if(pck.dest_port == LISTEN_PORT)
-	{
-		src_addr = tf->ip;
-		for(i = 0; i != MAX_SOCKETS; i++)
-		{
-			if((sockets[i].status == SOCKET_ACTIVE) && (sockets[i].type == SOCKET_LISTEN))
-			{
-				if(src_addr == sockets[i].address)
-				{
-					while(xQueueSendToBack(sockets[i].queue, pck, portMAX_DELAY) != pdTRUE);
-				}
-			}
-		}
-	}
+		fputs_P(PSTR("\e[90mTRAN-LEN-FAILED;"), stdout);
 #endif
-	for(i = 0; i != MAX_SOCKETS; i++)
-	{
+		goto drop;
+	}
 
-		if((sockets[i].status == SOCKET_ACTIVE) && (sockets[i].type == SOCKET_DATAGRAM))
+	struct socket_t *sp = sockets;
+	i = MAX_SOCKETS;
+	while (i--) {
+		if((sp->status == (SOCKET_ACTIVE | SOCKET_DATAGRAM)))
 		{
-			if(pck -> dest_port == sockets[i].port)
+			if(pck -> dest_port == sp->port)
 			{
-				src_addr = tf.addr;
-				if(src_addr == sockets[i].address)
-				{
-#if TRAN_DEBUG > 2					
-					fputs_P(PSTR("\e[90mTRAN-SOCKET-FOUND;]", stdout);
-		#endif
+#if TRAN_DEBUG > 2
+				fputs_P(PSTR(ESC_MAGENTA "TRAN-SOCKET-FOUND;"), stdout);
+#endif
 
-							//if(pck -> control[2] == 1)
-							//{
+				struct app_packet apck;
 
-							if ((apck = pvPortMalloc(sizeof(struct app_packet))) == 0)
-							goto drop;
+				if ((apck.data = pvPortMalloc(sizeof(pck->length))) == 0)
+					goto drop;
 
-					if ((apck->data = pvPortMalloc(sizeof(pck->length))) == 0)
-						goto drop;
-
-					apck -> addr = tf.addr;
-					apck -> len = pck -> length;
-					memcpy(apck -> data, pck -> app_data, pck -> length);
-					while(xQueueSendToBack(sockets[i].queue, apck, portMAX_DELAY) != pdTRUE);
-#if TRAN_DEBUG > 3					
-					fputs_P(PSTR("\e[90mTRAN-TRANSFER-DATA;]", stdout);
-		#endif
-							goto drop;
-					//}
-					//else
-					//{
-					//	memcpy(apck.data[len], pck -> data, pck -> length);
-					//	apck.len += pck -> length;
-					//	goto loop;
-					//}
-				}
-				else
-				{
-					i++;
-				}
-			}
-
-			else
-			{
-#if TRAN_DEBUG > 1
-				fputs_P(PSTR("\e[90mTRAN-PORT-FAILED;]", stdout);
-		#endif
-						i++;
+				apck.addr = tf.addr;
+				apck.len = pck -> length;
+				apck.port = pck->src_port;
+				memcpy(apck.data, pck -> app_data, pck -> length);
+				while(xQueueSendToBack(sp->queue, &apck, portMAX_DELAY) != pdTRUE);
+#if TRAN_DEBUG > 2
+				fputs_P(PSTR(ESC_YELLOW "TRAN-DATA;"), stdout);
+#endif
+				goto drop;
 			}
 		}
-		else
-		{
-			i++;
-		}
+		sp += sizeof(struct socket_t);
 	}
 	
 	
@@ -191,45 +146,60 @@ drop:
 		vPortFree(tf.ptr);
 		tf.ptr = 0;
 	}
-	if(apck)
-	{
-		vPortFree(apck);
-		apck = 0;
-	}
 	goto loop;
 }
 
 void tran_init()
 {
-	//	while ((tran_rx = xQueueCreate(2, sizeof(struct net_packet_t))) == NULL);
 #if TRAN_DEBUG > 0
 	while (xTaskCreate(tran_rx_task, "TRAN RX", 160, NULL, tskPROT_PRIORITY, NULL) != pdPASS);
 #else
-	while (xTaskCreate(tran_rx_task, "TRAN RX", 160, NULL, tskPROT_PRIORITY, NULL) != pdPASS);
+	while (xTaskCreate(tran_rx_task, "TRAN RX", 120, NULL, tskPROT_PRIORITY, NULL) != pdPASS);
 #endif
-	//printf("Tran RX init\n");
 }
 
-uint8_t soc_recfrom(uint8_t sid, void *buf, uint8_t *len, uint8_t *addr)
+/*
+ * Socket functions
+ */
+
+// Alloc a socket
+uint8_t soc_socket()
 {
+	struct socket_t *sp = sockets;
+	uint8_t i;
+	for (i = 0; i != MAX_SOCKETS; i++) {
+		if(sp->status == SOCKET_FREE) {
+			sp->status = SOCKET_ALLOCATED;
+			while ((sp->queue = xQueueCreate(2, sizeof(struct app_packet))) == NULL);
+			return i;
+		}
+		sp += sizeof(struct socket_t);
+	}
+	return 0xff;
+
+}
+
+uint8_t soc_recfrom(uint8_t sid, void *buf, uint8_t *len, uint8_t *addr, uint8_t *port)
+{
+	if (sid == 0xff)
+		return 0;
 	struct app_packet app_tem;
 	while(xQueueReceive(sockets[sid].queue, &app_tem, 0) != pdTRUE);
 	uint8_t length = *len < app_tem.len ? *len : app_tem.len;
 	*len = app_tem.len;
 	*addr = app_tem.addr;
-	memcpy(buf, app_tem.data, length);
-	vPortFree(app_tem.data);
+	*port = app_tem.port;
+	if (app_tem.data) {
+		memcpy(buf, app_tem.data, length);
+		vPortFree(app_tem.data);
+	}
 	return length;
 }
 
-uint8_t soc_sendto(uint8_t sid, void *buf, uint8_t len, uint8_t addr)
+uint8_t soc_sendto(uint8_t sid, void *buf, uint8_t len, uint8_t addr, uint8_t port)
 {
-	//if(socket[i])
-	sockets[sid].sport = 1;
-	sockets[sid].port = 233;
-	sockets[sid].type = SOCKET_DATAGRAM;
-	tran_tx(sockets[sid], len, buf, addr);
-	//puts_P(PSTR("tran no problem"));
-	sockets[sid].status = SOCKET_FREE;
-	return sid;
+	if (sid == 0xff)
+		return 0;
+	tran_tx(sid, len, buf, addr, port);
+	return len;
 }	
