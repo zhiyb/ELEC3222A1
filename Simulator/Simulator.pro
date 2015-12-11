@@ -12,14 +12,16 @@ greaterThan(QT_MAJOR_VERSION, 4): QT += widgets
 TARGET = Simulator
 TEMPLATE = app
 
+CONFIG += console
+
 DEFINES	+= "SIMULATION"
 INCLUDEPATH += .
 
 SOURCES += main.cpp\
     simulator.cpp \
-    ../llc_layer.c \
     simulation.cpp \
-    mac_layer_sim.cpp
+    ../net_layer.c \
+    llc_layer_sim.cpp
 
 HEADERS  += \
     simulator.h \

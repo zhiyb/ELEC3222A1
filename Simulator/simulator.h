@@ -5,8 +5,10 @@
 #include <QUdpSocket>
 #include <stdint.h>
 
+//#define PRI_ENABLE
+
 extern "C" {
-void sim_rx_handle(uint8_t addr, char *ptr, int len);
+void sim_rx_handle(uint8_t pri, uint8_t addr, QByteArray &data);
 void sim_start();
 void sim_end();
 }
@@ -26,7 +28,7 @@ class Simulator : public QWidget
 public:
 	explicit Simulator(QWidget *parent = 0);
 	~Simulator();
-	void transmit(uint8_t addr, void *ptr, int len);
+	void transmit(uint8_t pri, uint8_t addr, QByteArray &data);
 	void received(uint8_t addr, void *ptr, int len);
 	void *memAlloc(int size);
 	void memFree(void *ptr);
@@ -50,11 +52,15 @@ private slots:
 	void errorMessage(QString str);
 
 private:
-	static QString dataString(char *ptr, uint8_t len);
+	static QString dataString(const char *ptr, uint8_t len);
 
+	QMutex mutexMem;
 	QMap<void *, int> mapMem;
-	QUdpSocket *socket;
+	QUdpSocket socket, gSocket;
+#ifdef PRI_ENABLE
 	QCheckBox *pri;
+#endif
+	QCheckBox *memClear;
 	QLineEdit *input, *macAddr, *netAddr, *destAddr;
 	QListWidget *tx, *rx, *mem;
 	QListWidget *transmitLog, *receivedLog;
