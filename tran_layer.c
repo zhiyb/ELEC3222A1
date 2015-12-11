@@ -81,7 +81,6 @@ static inline void tran_tx(uint8_t sid, uint8_t len, const void *data, uint8_t a
 		
 		//printf_P(PSTR(" package num: %d transfer"), i);
 		vPortFree(pck);
-		pck = NULL;
 	}
 }
 

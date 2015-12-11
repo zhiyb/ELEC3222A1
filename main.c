@@ -318,8 +318,8 @@ int main()
 {
 	init();
 
-	while (xTaskCreate(app_rx_task, "APP RX", 160, NULL, tskAPP_PRIORITY, &rxTask) != pdPASS);
-	while (xTaskCreate(app_task, "APP task", 180, NULL, tskAPP_PRIORITY, &appTask) != pdPASS);
+	while (xTaskCreate(app_rx_task, "APP RX", 180, NULL, tskAPP_PRIORITY, &rxTask) != pdPASS);
+	while (xTaskCreate(app_task, "APP task", 240, NULL, tskAPP_PRIORITY, &appTask) != pdPASS);
 
 	vTaskStartScheduler();
 	return 1;
