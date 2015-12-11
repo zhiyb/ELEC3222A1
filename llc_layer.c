@@ -1,17 +1,27 @@
+#ifndef SIMULATION
 #include <avr/pgmspace.h>
 #include <util/delay.h>
+#include <colours.h>
+#endif
 #include <limits.h>
 #include <string.h>
 #include <stdlib.h>
 #include <stdio.h>
 #include <ctype.h>
-#include <colours.h>
 #include "net_layer.h"
 #include "llc_layer.h"
 #include "mac_layer.h"
 
+#ifndef SIMULATION
 #include <task.h>
 #include <semphr.h>
+#else
+#include <simulation.h>
+#endif
+
+#ifdef SIMULATION
+#define LLC_DEBUG	-1
+#endif
 
 #define PACKET_MAX_SIZE		NET_PACKET_MAX_SIZE
 #define FRAME_MIN_SIZE		FRAME_APPEND_SIZE
@@ -431,10 +441,10 @@ void llc_init()
 		acnCache[--i].addr = MAC_BROADCAST;
 	lastACN = ACN_CACHE_SIZE - 1;
 
-	while ((llc_rx = xQueueCreate(1, sizeof(struct llc_packet_t))) == NULL);
-	while ((llc_ack = xQueueCreate(1, sizeof(struct llc_ack_t))) == NULL); //create queue for ack
+	while ((llc_rx = xQueueCreate(1, sizeof(struct llc_packet_t))) == 0);
+	while ((llc_ack = xQueueCreate(1, sizeof(struct llc_ack_t))) == 0); //create queue for ack
 #ifdef LLC_MUTEX
-	while ((llc_semaphore = xSemaphoreCreateMutex()) == NULL);
+	while ((llc_semaphore = xSemaphoreCreateMutex()) == 0);
 #endif
 #if LLC_DEBUG > 0
 	while (xTaskCreate(llc_rx_task, "LLC RX", 160, NULL, tskPROT_PRIORITY, NULL) != pdPASS);
