@@ -1,15 +1,25 @@
 #include <stdio.h>
 #include <stdint.h>
 #include <string.h>
+#ifndef SIMULATION
 #include <colours.h>
 #include <avr/eeprom.h>
 #include <avr/pgmspace.h>
+#endif
 #include "net_layer.h"
 #include "llc_layer.h"
 #include "mac_layer.h"
 
+#ifndef SIMULATION
 #include <task.h>
 //#include <semphr.h>
+#else
+#include "simulation.h"
+#endif
+
+#ifdef SIMULATION
+#define NET_DEBUG	3
+#endif
 
 enum NetControl {ARPReq = 0, ARPAck, NETData};
 
@@ -26,15 +36,15 @@ struct net_buffer {
 	uint8_t TRAN_Segment[0];
 };
 
-#define NET_PKT_MIN_SIZE	(sizeof(struct net_buffer) + 2)
+#define NET_PKT_MIN_SIZE	(5 + 2)
 
 struct net_ack_t {
 	uint8_t mac;	// SRC ACK address
-	uint8_t addr;	// SRC address
+	uint8_t net;	// SRC address
 };
 
 struct net_arp_t {
-	uint8_t addr;
+	uint8_t net;
 	uint8_t mac;
 	struct net_arp_t *next;
 } *arp;
@@ -42,8 +52,10 @@ struct net_arp_t {
 // Pointer to checksum field
 #define CHECKSUM(s)	((uint16_t *)((s)->TRAN_Segment + (s)->Length))
 
+#ifndef SIMULATION
 static EEMEM uint8_t NVNETAddress = ADDRESS;
 static uint8_t net_addr;
+#endif
 
 void net_rx_task(void *param);
 
@@ -59,6 +71,7 @@ void net_report()
 	printf_P(PSTR("NET: ARP entries: %u\n"), rec);
 }
 
+#ifndef SIMULATION
 uint8_t net_address(void)
 {
 	return net_addr;
@@ -70,6 +83,7 @@ uint8_t net_address_update(uint8_t addr)
 	eeprom_update_byte(&NVNETAddress, addr);
 	return net_addr;
 }
+#endif
 
 void net_arp_init()
 {
@@ -80,20 +94,20 @@ uint8_t net_arp_find(uint8_t address)
 {
 	struct net_arp_t **ptr = &arp;
 	while (*ptr != 0) {
-		if ((*ptr)->addr == address)
+		if ((*ptr)->net == address)
 			return (*ptr)->mac;
 		ptr = &(*ptr)->next;
 	}
 	return MAC_BROADCAST;
 }
 
-void net_arp_update(uint8_t address, uint8_t mac)
+void net_arp_update(uint8_t net, uint8_t mac)
 {
 	if (mac == MAC_BROADCAST)
 		return;
 	struct net_arp_t **ptr = &arp;
 	while (*ptr != 0) {
-		if ((*ptr)->addr == address) {
+		if ((*ptr)->net == net) {
 			(*ptr)->mac = mac;
 			return;
 		}
@@ -101,7 +115,7 @@ void net_arp_update(uint8_t address, uint8_t mac)
 	}
 	if ((*ptr = pvPortMalloc(sizeof(struct net_arp_t))) == 0)
 		return; //exit function when fail to allocate new memory
-	(*ptr)->addr = address;
+	(*ptr)->net = net;
 	(*ptr)->mac = mac;
 	(*ptr)->next = 0;
 }
@@ -109,13 +123,15 @@ void net_arp_update(uint8_t address, uint8_t mac)
 void net_init()
 {
 	net_arp_init();
+#ifndef SIMULATION
 	net_addr = eeprom_read_byte(&NVNETAddress);
-	while ((net_rx = xQueueCreate(2, sizeof(struct net_packet_t))) == NULL); //create a queue for rx
-	while ((net_ack = xQueueCreate(1, sizeof(struct net_ack_t))) == NULL);
+#endif
+	while ((net_rx = xQueueCreate(2, sizeof(struct net_packet_t))) == 0); //create a queue for rx
+	while ((net_ack = xQueueCreate(1, sizeof(struct net_ack_t))) == 0);
 #if NET_DEBUG > 0
-	while (xTaskCreate(net_rx_task, "NET RX", 160, NULL, tskPROT_PRIORITY, NULL) != pdPASS);
+	while (xTaskCreate(net_rx_task, "NET RX", 160, NULL, tskPROT_PRIORITY, 0) != pdPASS);
 #else //NET_BEBUG is 0 when not defined
-	while (xTaskCreate(net_rx_task, "NET RX", 120, NULL, tskPROT_PRIORITY, NULL) != pdPASS);
+	while (xTaskCreate(net_rx_task, "NET RX", 120, NULL, tskPROT_PRIORITY, 0) != pdPASS);
 	//while (xTaskCreate(net_rx_task, "NET RX", configMINIMAL_STACK_SIZE, NULL, tskPROT_PRIORITY, NULL) != pdPASS);
 #endif
 }
@@ -126,16 +142,12 @@ uint8_t net_tx(uint8_t address, uint8_t len, const void *data)
 	uint8_t length = NET_PKT_MIN_SIZE + len;
 	struct net_buffer *buffer;
 	for (;;) {
-		// Checksum
-		buffer = pvPortMalloc(length);
-		if (buffer == NULL) {
-#if NET_DEBUG >= 0
-			fputs(ESC_GREY "NET-BUFFER-FAILED;", stdout);
-#endif
-			vTaskDelay(RETRY_TIME);
-			continue;
-		} else
+		if ((buffer = pvPortMalloc(length)) != NULL)
 			break;
+#if NET_DEBUG >= 0
+		fputs(ESC_GREY "NET-BUFFER-FAILED;", stdout);
+#endif
+		vTaskDelay(RETRY_TIME);
 	}
 #if NET_DEBUG > 1
 	printf_P(PSTR(ESC_BLUE "NET-TX,%02x;"), address);
@@ -176,7 +188,7 @@ findMAC:
 	
 	// Reset a queue to its original empty state
 	xQueueReset(net_ack);
-	if (xQueueReceive(net_ack, &ack, RETRY_TIME) != pdTRUE || ack.addr != address || ack.mac == MAC_BROADCAST) {
+	if (xQueueReceive(net_ack, &ack, RETRY_TIME) != pdTRUE || ack.net != address || ack.mac == MAC_BROADCAST) {
 		if (arp_count-- == 0) {
 			vPortFree(buffer);
 			return 0;
@@ -242,9 +254,11 @@ loop:
 		goto drop;
 	}
 
+#ifndef SIMULATION
 	// Address conflict
 	if (packet->SRC_Address == net_address())
 		net_address_update(net_address() + 1);
+#endif
 
 	if (packet->DEST_Address != net_address()) {
 #if NET_DEBUG > 1
@@ -303,7 +317,7 @@ loop:
 			}
 
 			llc_tx(DL_DATA_ACK, pkt.addr, NET_PKT_MIN_SIZE, buffer);
-			vPortFree(packet);
+			vPortFree(buffer);
 		}
 		goto drop;
 		
@@ -313,7 +327,7 @@ loop:
 #endif
 		{
 			struct net_ack_t ack;
-			ack.addr = packet->SRC_Address;
+			ack.net = packet->SRC_Address;
 			ack.mac = pkt.addr;
 			if (xQueueSendToBack(net_ack, &ack, 0) != pdTRUE) {
 #if NET_DEBUG > 0
