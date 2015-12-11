@@ -169,13 +169,11 @@ void Simulator::read()
 		socket.readDatagram(data.data(), data.size(),
 					&sender, &senderPort);
 
-		uint8_t pri = data.at(0);
-		data.remove(0, 1);
 		uint8_t len = data.size();
 		uint8_t addr = senderPort - BASE;
-		receivedLog->addItem(tr("P: %1, A: %2, L: %3 => %4").arg(pri).arg(addr, 0, 16).arg(len).arg(dataString(data.data(), len)));
+		receivedLog->addItem(tr("A: %1, L: %2 => %3").arg(addr, 0, 16).arg(len).arg(dataString(data.data(), len)));
 		receivedLog->scrollToBottom();
-		sim_rx_handle(pri, addr, data);
+		sim_rx_handle(addr, data);
 	}
 	while (gSocket.hasPendingDatagrams()) {
 		QByteArray data;
@@ -186,13 +184,11 @@ void Simulator::read()
 		gSocket.readDatagram(data.data(), data.size(),
 					&sender, &senderPort);
 
-		uint8_t pri = DL_UNITDATA;
-		data.remove(0, 1);
 		uint8_t len = data.size();
 		uint8_t addr = senderPort - BASE;
-		receivedLog->addItem(tr("P: %1, A: %2, L: %3 => %4").arg(pri).arg(addr, 0, 16).arg(len).arg(dataString(data.data(), len)));
+		receivedLog->addItem(tr("A: %1, L: %2 => %3").arg(addr, 0, 16).arg(len).arg(dataString(data.data(), len)));
 		receivedLog->scrollToBottom();
-		sim_rx_handle(pri, addr, data);
+		sim_rx_handle(addr, data);
 	}
 }
 
@@ -207,10 +203,9 @@ void Simulator::updateAddr()
 	}
 }
 
-void Simulator::transmit(uint8_t pri, uint8_t addr, QByteArray &data)
+void Simulator::transmit(uint8_t addr, QByteArray &data)
 {
-	transmitLog->addItem(tr("P: %1, A: %2, L: %3 => %4").arg(pri).arg(addr, 0, 16).arg(data.size()).arg(dataString(data.data(), data.size())));
-	data.prepend(pri);
+	transmitLog->addItem(tr("A: %1, L: %2 => %3").arg(addr, 0, 16).arg(data.size()).arg(dataString(data.data(), data.size())));
 	socket.writeDatagram(data, QHostAddress::LocalHost, BASE + addr);
 	socket.waitForBytesWritten();
 	emit scrollTransmitLog();
@@ -241,17 +236,17 @@ void Simulator::memFree(void *ptr)
 
 void TXTask::run()
 {
-	uint8_t ret = net_tx(addr, data.size(), data.data());
-	sim->tx->addItem(QObject::tr("(%1) A: %2, L: %3 => %4").arg(ret).arg(addr, 0, 16).arg(data.size()).arg(Simulator::dataString(data.data(), data.size())));
+	uint8_t ret = llc_tx(pri, addr, data.size(), data.data());
+	sim->tx->addItem(QObject::tr("(%1) P: %2, A: %3, L: %4 => %5").arg(ret).arg(pri).arg(addr, 0, 16).arg(data.size()).arg(Simulator::dataString(data.data(), data.size())));
 	sim->txScroll();
 }
 
 void RXTask::run()
 {
 loop:
-	net_packet_t pkt;
-	xQueueReceive(net_rx, &pkt, -1);
-	sim->rx->addItem(QObject::tr("A: %1, L: %2 => %3").arg(pkt.addr, 0, 16).arg(pkt.len).arg(Simulator::dataString((char *)pkt.payload, pkt.len)));
+	llc_packet_t pkt;
+	xQueueReceive(llc_rx, &pkt, -1);
+	sim->rx->addItem(QObject::tr("P: %1, A: %2, L: %3 => %4").arg(pkt.pri).arg(pkt.addr, 0, 16).arg(pkt.len).arg(Simulator::dataString((char *)pkt.payload, pkt.len)));
 	sim->rxScroll();
 	if (pkt.ptr)
 		sim->memFree(pkt.ptr);

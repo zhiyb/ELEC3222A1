@@ -19,14 +19,14 @@ void sim_end()
 	taskStop();
 }
 
-void sim_rx_handle(uint8_t addr, char *ptr, int len)
+void sim_rx_handle(uint8_t addr, QByteArray &data)
 {
 	struct mac_frame frame;
 	frame.addr = addr;
-	frame.len = len;
-	frame.ptr = malloc(len);
+	frame.len = data.size();
+	frame.ptr = pvPortMalloc(data.size());
 	frame.payload = frame.ptr;
-	memcpy(frame.ptr, ptr, len);
+	memcpy(frame.ptr, data.data(), data.size());
 	xQueueSendToBack(mac_rx, &frame, 0);
 }
 
@@ -37,7 +37,10 @@ void mac_init()
 
 void mac_tx(uint8_t addr, void *data, uint8_t len)
 {
-	sim->transmit(addr, data, len);
+	QByteArray array;
+	array.resize(len);
+	memcpy(array.data(), data, len);
+	sim->transmit(addr, array);
 }
 
 uint8_t mac_written()

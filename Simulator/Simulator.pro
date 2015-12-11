@@ -14,14 +14,14 @@ TEMPLATE = app
 
 CONFIG += console
 
-DEFINES	+= "SIMULATION"
+DEFINES	+= "SIMULATION" "PRI_ENABLE"
 INCLUDEPATH += .
 
 SOURCES += main.cpp\
     simulator.cpp \
     simulation.cpp \
-    ../net_layer.c \
-    llc_layer_sim.cpp
+    ../llc_layer.c \
+    mac_layer_sim.cpp
 
 HEADERS  += \
     simulator.h \

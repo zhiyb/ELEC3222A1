@@ -8,7 +8,7 @@
 //#define PRI_ENABLE
 
 extern "C" {
-void sim_rx_handle(uint8_t pri, uint8_t addr, QByteArray &data);
+void sim_rx_handle(uint8_t addr, QByteArray &data);
 void sim_start();
 void sim_end();
 }
@@ -28,7 +28,7 @@ class Simulator : public QWidget
 public:
 	explicit Simulator(QWidget *parent = 0);
 	~Simulator();
-	void transmit(uint8_t pri, uint8_t addr, QByteArray &data);
+	void transmit(uint8_t addr, QByteArray &data);
 	void received(uint8_t addr, void *ptr, int len);
 	void *memAlloc(int size);
 	void memFree(void *ptr);
