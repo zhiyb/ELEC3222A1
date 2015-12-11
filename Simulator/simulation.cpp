@@ -9,6 +9,7 @@
 
 struct queue_t {
 	int size, depth;
+	QMutex *mutex;
 	QQueue<void *> *queue;
 };
 
@@ -42,10 +43,12 @@ void xQueueReset(QueueHandle_t queue)
 	queue_t q = vecQueue[queue];
 	if (q.size == 0)
 		return;
+	q.mutex->lock();
 	while (!q.queue->isEmpty()) {
 		void *ptr = q.queue->dequeue();
 		free(ptr);
 	}
+	q.mutex->unlock();
 }
 
 int xQueueReceive(QueueHandle_t queue, void *ptr, int time)
@@ -55,6 +58,7 @@ int xQueueReceive(QueueHandle_t queue, void *ptr, int time)
 		return pdFALSE;
 	while (q.queue->isEmpty() && time-- != 0)
 		usleep(1000);
+	QMutexLocker locker(q.mutex);
 	if (q.queue->isEmpty())
 		return pdFALSE;
 	void *p = q.queue->dequeue();
@@ -94,7 +98,9 @@ int xQueueSendToBack(QueueHandle_t queue, void *ptr, int time)
 		return pdFALSE;
 	void *p = malloc(q.size);
 	memcpy(p, ptr, q.size);
+	q.mutex->lock();
 	q.queue->enqueue(p);
+	q.mutex->unlock();
 	return true;
 }
 
@@ -104,6 +110,7 @@ QueueHandle_t xQueueCreate(int depth, int size)
 	q.size = size;
 	q.depth = depth;
 	q.queue = new QQueue<void *>;
+	q.mutex = new QMutex;
 	vecQueue.append(q);
 	return vecQueue.count() - 1;
 }
