@@ -191,8 +191,8 @@ poll:
 			
 			sendfd = soc_socket();
 				
-			printf_P(PSTR("the socket id is %d\n"), sendfd);
-			puts_P(PSTR("socket no problem"));
+			//printf_P(PSTR("the socket id is %d\n"), sendfd);
+			//puts_P(PSTR("socket no problem"));
 			uint8_t status = soc_sendto(sendfd, string, len, dest);
 			//puts_P(PSTR("no problem"));
 			uart0_lock();
@@ -319,8 +319,8 @@ int main()
 {
 	init();
 
-	while (xTaskCreate(app_rx_task, "APP RX", 180, NULL, tskAPP_PRIORITY, &rxTask) != pdPASS);
-	while (xTaskCreate(app_task, "APP task", 200, NULL, tskAPP_PRIORITY, &appTask) != pdPASS);
+	while (xTaskCreate(app_rx_task, "APP RX", 160, NULL, tskAPP_PRIORITY, &rxTask) != pdPASS);
+	while (xTaskCreate(app_task, "APP task", 240, NULL, tskAPP_PRIORITY, &appTask) != pdPASS);
 
 	vTaskStartScheduler();
 	return 1;

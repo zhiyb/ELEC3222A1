@@ -29,7 +29,7 @@ void pack(struct socket_t soc, uint8_t len, uint8_t *str, uint8_t addr)
 	uint8_t ctrl[2];
 	uint16_t checksum;
 
-	puts_P(PSTR("pack init no problem"));
+	//puts_P(PSTR("pack init no problem"));
 	for(i = 0; i < len / DATA_SIZE + 1; i++)
 	{
 		checksum = 0;
@@ -51,17 +51,17 @@ void pack(struct socket_t soc, uint8_t len, uint8_t *str, uint8_t addr)
 		pck -> dest_port = soc.port;
 		pck -> control[0] = ctrl[0];
 		pck -> control[1] = ctrl[1];
-		puts_P(PSTR("pack before memcpy no problem"));
+		//puts_P(PSTR("pack before memcpy no problem"));
 		memcpy(pck -> app_data, &str[i * DATA_SIZE], pck -> length);
 		for(j = 0; j < pck -> length + 5; j++)
 			checksum += *(((uint8_t *) pck) + j);
 		*((uint16_t *)(((void *)pck) + j)) = checksum;
 		length = pck -> length + STRUCT_SIZE;
 		
-		printf_P(PSTR("CTRL:%u, NetpackLength:%u, App data:%u, package num: %u, check sum: %u, sizeofPck: %u\n "), ctrl[1], length, len, i, checksum, (len - (i * DATA_SIZE) + STRUCT_SIZE));
+		//printf_P(PSTR("CTRL:%u, NetpackLength:%u, App data:%u, package num: %u, check sum: %u, sizeofPck: %u\n "), ctrl[1], length, len, i, checksum, (len - (i * DATA_SIZE) + STRUCT_SIZE));
 		net_tx(addr, length, pck);
 		
-		printf_P(PSTR(" package num: %d transfer"), i);
+		//printf_P(PSTR(" package num: %d transfer"), i);
 		vPortFree(pck);
 		pck = NULL;
 	}
@@ -75,10 +75,10 @@ void tran_tx(struct socket_t soc, uint8_t len, const void *data, uint8_t addr)
 	if((buf = pvPortMalloc(len)) == 0)
 			return;
 	memcpy(buf, data, len);
-	puts_P(PSTR("cpy buf no problem"));
+	//puts_P(PSTR("cpy buf no problem"));
 	pack(soc, len, buf, addr);
 	vPortFree(buf);
-	buf = NULL;	
+	//buf = NULL;	
 }
 
 void tran_rx_task(void *param)
@@ -203,11 +203,11 @@ void tran_init()
 {
 //	while ((tran_rx = xQueueCreate(2, sizeof(struct net_packet_t))) == NULL);
 #if TRAN_DEBUG > 0
-	while (xTaskCreate(tran_rx_task, "TRAN RX", 180, NULL, tskPROT_PRIORITY, NULL) != pdPASS);
+	while (xTaskCreate(tran_rx_task, "TRAN RX", 160, NULL, tskPROT_PRIORITY, NULL) != pdPASS);
 #else
-	while (xTaskCreate(tran_rx_task, "TRAN RX", 180, NULL, tskPROT_PRIORITY, NULL) != pdPASS);
+	while (xTaskCreate(tran_rx_task, "TRAN RX", 160, NULL, tskPROT_PRIORITY, NULL) != pdPASS);
 #endif
-	printf("Tran RX init\n");
+	//printf("Tran RX init\n");
 }
 
 uint8_t soc_recfrom(uint8_t sid, void *buf, uint8_t *len, uint8_t *addr)
@@ -229,7 +229,7 @@ uint8_t soc_sendto(uint8_t sid, void *buf, uint8_t len, uint8_t addr)
 	sockets[sid].port = 233;
 	sockets[sid].type = SOCKET_DATAGRAM;	
 	tran_tx(sockets[sid], len, buf, addr);
-	puts_P(PSTR("tran no problem"));
+	//puts_P(PSTR("tran no problem"));
 	sockets[sid].status = SOCKET_FREE;
 	return sid;	
 }	
