@@ -158,7 +158,7 @@ void app_task(void *param)
 
 poll:
 	// No event notify received
-	if (xTaskNotifyWait(0, ULONG_MAX, &notify, 20) != pdTRUE) {
+	if (xTaskNotifyWait(0, ULONG_MAX, &notify, 100) != pdTRUE) {
 		// Start UART message transmission
 		if (uartSending) {
 			//sendfd = soc_socket();

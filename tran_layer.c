@@ -176,7 +176,7 @@ uint8_t soc_recvfrom(uint8_t sid, void *buf, uint8_t *len, uint8_t *addr, uint8_
 	if (sid == 0xff)
 		return 0;
 	struct app_packet app_tem;
-	while(xQueueReceive(sockets[sid].queue, &app_tem, 0) != pdTRUE);
+	while(xQueueReceive(sockets[sid].queue, &app_tem, portMAX_DELAY) != pdTRUE);
 	uint8_t length = *len < app_tem.len ? *len : app_tem.len;
 	*len = app_tem.len;
 	*addr = app_tem.addr;
