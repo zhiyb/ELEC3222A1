@@ -49,7 +49,7 @@ loop:
 
 void app_task(void *param)
 {
-	static char string[] = "Station ?, No ??????: Hi!";
+	static char string[] = "Station ?, No ??????: Hi\xaa";
 	uint8_t dest = MAC_BROADCAST;
 	uint8_t report = 0;
 	uint16_t count = 0;
@@ -65,7 +65,7 @@ poll:
 	if (xTaskNotifyWait(0, ULONG_MAX, &notify, 10) != pdTRUE) {
 		// Start transmission
 		if (!(PINC & _BV(2)) && mac_written()) {
-			sprintf(string + 8 + 6, "%6u: Hi!", count);
+			sprintf(string + 8 + 6, "%6u: Hi\xaa", count);
 			mac_tx(dest, (void *)string, sizeof(string));
 
 			printf_P(PSTR("\e[91mStation %02x, sent %u(%u bytes)\n"), mac_address(), count++, sizeof(string));
