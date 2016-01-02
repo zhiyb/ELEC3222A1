@@ -1,5 +1,9 @@
 #include "socket.h"
-
+#include <stdio.h>
+#include "tran_layer.h"
+#ifdef SIMULATION
+#include "simulation.h"
+#endif
 struct socket_t sockets[MAX_SOCKETS];
 
 void socket_init()
@@ -9,20 +13,18 @@ void socket_init()
 		sockets[i].status = SOCKET_FREE;
 }
 
-// Alloc a socket
-void socket();
+#ifdef SOCKET_TCP
 // Listen on a port
-void listen(uint8_t sid, uint16_t port)
+void soc_listen(uint8_t sid, uint16_t port)
 {
 	struct socket_t *sptr = sockets + sid;
-	(*sptr).type = SOCKET_LISTEN;
 	sptr->port = port;
-	sptr->status = SOCKET_ACTIVE;
- 	sptr->queue = xQueue	
+	sptr->status = SOCKET_ACTIVE | SOCKET_DATAGRAM;
+ //	sptr->queue = xQueue	
 }
 
 // Accept a pending new connection
-uint8_t accept(uint8_t sid)
+uint8_t soc_accept(uint8_t sid)
 {
 	uint8_t id;
 	struct socket_t *sptr = sockets + sid;
@@ -32,7 +34,7 @@ uint8_t accept(uint8_t sid)
 }
 
 // Read from socket buffer
-uint8_t read(uint8_t sid, uint8_t *buffer, uint8_t len)
+uint8_t soc_read(uint8_t sid, uint8_t *buffer, uint8_t len)
 {
 	uint8_t i;
 	struct socket_t *sptr = sockets + sid;
@@ -43,4 +45,12 @@ uint8_t read(uint8_t sid, uint8_t *buffer, uint8_t len)
 	}	//len = *buffer;
 	//buffer++;
 	return len;
+}
+#endif
+
+void soc_bind(uint8_t sid, uint8_t port)
+{
+	// TODO: if binding on 0, then find a random unused number
+	sockets[sid].status = SOCKET_ACTIVE | SOCKET_DATAGRAM;
+	sockets[sid].port = port;
 }

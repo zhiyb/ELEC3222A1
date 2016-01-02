@@ -1,0 +1,3 @@
+SRC	+= tran_layer.c socket.c
+
+DEFS	+= -DTRAN_DEBUG=0

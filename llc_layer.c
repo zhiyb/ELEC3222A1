@@ -1,5 +1,8 @@
+#ifndef SIMULATION
 #include <avr/pgmspace.h>
 #include <util/delay.h>
+#include <colours.h>
+#endif
 #include <limits.h>
 #include <string.h>
 #include <stdlib.h>
@@ -9,8 +12,16 @@
 #include "llc_layer.h"
 #include "mac_layer.h"
 
+#ifndef SIMULATION
 #include <task.h>
 #include <semphr.h>
+#else
+#include <simulation.h>
+#endif
+
+#ifdef SIMULATION
+#define LLC_DEBUG	-1
+#endif
 
 #define PACKET_MAX_SIZE		NET_PACKET_MAX_SIZE
 #define FRAME_MIN_SIZE		FRAME_APPEND_SIZE
@@ -23,7 +34,7 @@
 #define RETRY_TIME	300
 #define RETRY_COUNT	8
 
-#undef LLC_MUTEX
+#define LLC_MUTEX
 
 QueueHandle_t llc_rx;
 static QueueHandle_t llc_ack;
@@ -62,6 +73,21 @@ static struct llc_acn_t {
 	uint8_t size;	// Current data buffer size
 } acnCache[ACN_CACHE_SIZE];
 static uint8_t lastACN;
+
+void llc_report()
+{
+	uint8_t acnAct = 0, acnRec = 0;
+	struct llc_acn_t *aptr = acnCache;
+	uint8_t i = ACN_CACHE_SIZE;
+	while (i--) {
+		if (aptr->addr != MAC_BROADCAST)
+			acnRec++;
+		if (aptr->buffer != 0)
+			acnAct++;
+		aptr++;
+	}
+	printf_P(PSTR("LLC: recorded: %u, active: %u\n"), acnRec, acnAct);
+}
 
 static void llc_acn_reset(struct llc_acn_t *acn)
 {
@@ -105,9 +131,12 @@ static uint8_t llc_tx_frame(union ctrl_t ctrl, uint8_t seq, uint8_t addr, uint8_
 {
 	// Generate LLC frame
 	static struct llc_frame_t *frame;
-	do
+	for (;;) {
 		frame = pvPortMalloc(sizeof(struct llc_frame_t) + len);
-	while (frame == 0);
+		if (frame != 0)
+			break;
+		vTaskDelay(RETRY_TIME);
+	}
 	frame->ctrl = ctrl;
 	frame->seq = seq;
 	frame->len = len;
@@ -130,7 +159,7 @@ static uint8_t llc_tx_frame(union ctrl_t ctrl, uint8_t seq, uint8_t addr, uint8_
 				mac_tx(addr, frame, len);
 				count++;
 #if LLC_DEBUG > 0
-				printf_P(PSTR("\e[95mRetry %u..."), count);
+				printf_P(PSTR(ESC_MAGENTA "LLC-RETRY,%u;"), count);
 #endif
 				continue;
 			}
@@ -153,22 +182,28 @@ uint8_t llc_tx(uint8_t pri, uint8_t addr, uint8_t len, void *ptr)
 	union ctrl_t ctrl;
 	ctrl.u8 = 0;
 
+#ifdef LLC_MUTEX
+	// Thread safe
+	while (xSemaphoreTake(llc_semaphore, portMAX_DELAY) != pdTRUE);
+#endif
+
 	struct llc_acn_t *acn = 0;
 	if (addr != MAC_BROADCAST) {
 		if (pri == DL_DATA_ACK) {
-#ifdef LLC_MUTEX
-			// Thread safe: prevent acn->s accessed by multiple thread
-			while (xSemaphoreTake(llc_semaphore, portMAX_DELAY) != pdTRUE);
+#if LLC_DEBUG > 1
+			printf_P(PSTR(ESC_BLUE "LLC-PKT,%02x-%u,%u;"), addr, len, acn->s);
 #endif
 			ctrl.s.ackreq = 1;
 			acn = llc_acn(addr);
 			ctrl.s.acn = acn->s;
 			acn->s = !acn->s;
-#if LLC_DEBUG > 1
-			printf_P(PSTR("\e[94mLLC-PKT,%u;"), acn->s);
-#endif
 		}
 	}
+
+#if LLC_DEBUG > 1
+	if (!ctrl.s.ackreq)
+		printf_P(PSTR(ESC_BLUE "LLC-UN-PKT,%02x-%u;"), addr, len);
+#endif
 
 	// Split packet into multiple frames
 	while (len > FRAME_DATA_MAX_SIZE) {
@@ -182,8 +217,7 @@ uint8_t llc_tx(uint8_t pri, uint8_t addr, uint8_t len, void *ptr)
 	ctrl.s.last = 1;
 	if (llc_tx_frame(ctrl, seq, addr, len, ptr)) {
 #ifdef LLC_MUTEX
-		if (ctrl.s.ackreq)
-			xSemaphoreGive(llc_semaphore);
+		xSemaphoreGive(llc_semaphore);
 #endif
 		return 1;
 	}
@@ -200,7 +234,6 @@ failed:	// ackreq must be 1 to be here
 static void llc_rx_task(void *param)
 {
 	static struct mac_frame data;
-	puts_P(PSTR("\e[96mLLC RX task initialised."));
 
 loop:
 	// Receive 1 frame from MAC queue
@@ -220,8 +253,8 @@ loop:
 		struct llc_ack_t ack;
 		if (!uxQueueSpacesAvailable(llc_ack)) {
 			xQueueReceive(llc_ack, &ack, 0);
-#if LLC_DEBUG >= 0
-			fputs_P(PSTR("\e[90mLLC-A-FAIL;"), stdout);
+#if LLC_DEBUG > 0
+			fputs_P(PSTR(ESC_GREY "LLC-RX-ACK-FAIL;"), stdout);
 #endif
 		}
 		ack.ctrl = frame->ctrl;
@@ -229,7 +262,7 @@ loop:
 		ack.addr = data.addr;
 		xQueueSendToBack(llc_ack, &ack, 0);
 #if LLC_DEBUG > 0
-		fputs_P(PSTR("\e[94mACK;"), stdout);
+		fputs_P(PSTR(ESC_YELLOW "LLC-RX-ACK;"), stdout);
 #endif
 		goto drop;
 	}
@@ -256,7 +289,7 @@ loop:
 	struct llc_acn_t *acn = llc_acn(data.addr);
 
 #if LLC_DEBUG > 1
-	printf_P(PSTR("\e[93mLLC-FRAME,%u/%u,%u/%u;"), frame->ctrl.s.acn, acn->r, frame->seq, acn->seq);
+	printf_P(PSTR(ESC_YELLOW "LLC-FRAME,%u/%u,%u/%u;"), frame->ctrl.s.acn, acn->r, frame->seq, acn->seq);
 #endif
 
 	// If this is a new packet
@@ -264,44 +297,50 @@ loop:
 		// If this frame is out of sequence
 		if (frame->seq != 0) {
 #if LLC_DEBUG > 0
-			//fputs_P(PSTR("\e[93mLLC-N-OUT;"), stdout);
-			printf_P(PSTR("\e[93mLLC-N-OUT,%u,%u;"), frame->seq, acn->seq);
+			printf_P(PSTR(ESC_MAGENTA "LLC-NEW-OUT,%u,%u;"), frame->seq, acn->seq);
 #endif
 			goto drop;
 		}
 
 		// If this packet is carried by only a single frame
 		if (frame->ctrl.s.last) {
+			acn->seq = 0xff;	// Mark as done
 			// If this frame is not empty
 			if (frame->len != 0) {
-				// Send to upper layer
-				uint8_t *buffer = pvPortMalloc(frame->len);
-				if (buffer == NULL)	// Insufficient RAM
-					goto drop;
-				memcpy(buffer, frame->payload, frame->len);
+				// Send ACK
+				struct llc_frame_t f;
+				f.ctrl.u8 = frame->ctrl.u8;
+				f.ctrl.s.ack = 1;
+				f.seq = 0;
+				f.len = 0;
+				mac_tx(data.addr, &f, FRAME_APPEND_SIZE);
 
 				struct llc_packet_t pkt;
 				pkt.pri = DL_DATA_ACK;
 				pkt.addr = data.addr;
 				pkt.len = frame->len;
-				pkt.ptr = buffer;
-				pkt.payload = buffer;
+				pkt.ptr = data.ptr;
+				pkt.payload = frame->payload;
 
 				// Unable to handle it at the moment
 				if (xQueueSendToBack(llc_rx, &pkt, 0) != pdTRUE) {
-#if LLC_DEBUG >= 0
-					fputs_P(PSTR("\e[90mLLC-S-FAIL;"), stdout);
+#if LLC_DEBUG > 0
+					fputs_P(PSTR(ESC_GREY "LLC-Q-SNG-FAIL;"), stdout);
 #endif
-					vPortFree(buffer);
 					goto drop;
 				}
+
+				goto loop;
 			}
-			acn->seq = 0xff;	// Mark as done
 		} else {
-			if (acn->buffer == NULL && (acn->buffer = pvPortMalloc(PACKET_MAX_SIZE)) == NULL)
+			if (acn->buffer == NULL && (acn->buffer = pvPortMalloc(PACKET_MAX_SIZE)) == NULL) {
+#if LLC_DEBUG >= 0
+				fputs_P(PSTR(ESC_GREY "LLC-MEM-FAIL;"), stdout);
+#endif
 				goto drop;
+			}
 #if LLC_DEBUG > 1
-			fputs_P(PSTR("\e[93mLLC-S-STA;"), stdout);
+			fputs_P(PSTR(ESC_YELLOW "LLC-SEQ-STA;"), stdout);
 #endif
 			memcpy(acn->buffer, frame->payload, frame->len);
 			acn->size = frame->len;
@@ -317,8 +356,8 @@ loop:
 			// If this frame is out of sequence
 			if (frame->seq != acn->seq + 1) {
 #if LLC_DEBUG > 0
-				//fputs_P(PSTR("\e[93mLLC-S-OUT;"), stdout);
-				printf_P(PSTR("\e[93mLLC-S-OUT,%u,%u;"), frame->seq, acn->seq);
+				//fputs_P(PSTR("\e[93mLLC-SEQ-OUT;"), stdout);
+				printf_P(PSTR(ESC_MAGENTA "LLC-SEQ-OUT,%u,%u;"), frame->seq, acn->seq);
 #endif
 				// Ignore this packet
 				acn->r = 0xff;
@@ -327,14 +366,14 @@ loop:
 
 			// If data buffer is insufficient
 			if (acn->size + frame->len > PACKET_MAX_SIZE) {
-#if LLC_DEBUG >= 0
-				fputs_P(PSTR("\e[90mLLC-B-FAIL;"), stdout);
+#if LLC_DEBUG > 0
+				fputs_P(PSTR(ESC_GREY "LLC-SEQ-MEM-FAIL;"), stdout);
 #endif
 				goto drop;
 			}
 
 #if LLC_DEBUG > 1
-			fputs_P(PSTR("\e[93mLLC-S-ACC;"), stdout);
+			fputs_P(PSTR(ESC_YELLOW "LLC-SEQ-ACC;"), stdout);
 #endif
 			if (acn->buffer != NULL) {
 				memcpy(acn->buffer + acn->size, frame->payload, frame->len);
@@ -353,16 +392,17 @@ loop:
 					pkt.ptr = acn->buffer;
 					pkt.payload = acn->buffer;
 
+					acn->buffer = 0;
+					acn->size = 0;
+
 					// Unable to handle it at the moment
 					if (xQueueSendToBack(llc_rx, &pkt, 0) != pdTRUE) {
-#if LLC_DEBUG >= 0
-						fputs_P(PSTR("\e[90mLLC-M-FAIL;"), stdout);
+						vPortFree(pkt.ptr);
+#if LLC_DEBUG > 0
+						fputs_P(PSTR(ESC_GREY "LLC-Q-MLT-FAIL;"), stdout);
 #endif
 						goto drop;
 					}
-
-					acn->buffer = 0;
-					acn->size = 0;
 				}
 			}
 			acn->seq++;
@@ -379,7 +419,7 @@ loop:
 	vPortFree(data.ptr);
 
 #if LLC_DEBUG > 1
-	fputs_P(PSTR("\e[93mACK;"), stdout);
+	fputs_P(PSTR(ESC_YELLOW "LLC-TX-ACK;"), stdout);
 #endif
 	goto loop;
 
@@ -401,14 +441,14 @@ void llc_init()
 		acnCache[--i].addr = MAC_BROADCAST;
 	lastACN = ACN_CACHE_SIZE - 1;
 
-	while ((llc_rx = xQueueCreate(2, sizeof(struct llc_packet_t))) == NULL);
-	while ((llc_ack = xQueueCreate(2, sizeof(struct llc_ack_t))) == NULL); //create queue for ack
+	while ((llc_rx = xQueueCreate(1, sizeof(struct llc_packet_t))) == 0);
+	while ((llc_ack = xQueueCreate(1, sizeof(struct llc_ack_t))) == 0); //create queue for ack
 #ifdef LLC_MUTEX
-	while ((llc_semaphore = xSemaphoreCreateMutex()) == NULL);
+	while ((llc_semaphore = xSemaphoreCreateMutex()) == 0);
 #endif
 #if LLC_DEBUG > 0
 	while (xTaskCreate(llc_rx_task, "LLC RX", 160, NULL, tskPROT_PRIORITY, NULL) != pdPASS);
 #else
-	while (xTaskCreate(llc_rx_task, "LLC RX", configMINIMAL_STACK_SIZE, NULL, tskPROT_PRIORITY, NULL) != pdPASS);
+	while (xTaskCreate(llc_rx_task, "LLC RX", 100, NULL, tskPROT_PRIORITY, NULL) != pdPASS);
 #endif
 }

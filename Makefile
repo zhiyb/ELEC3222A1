@@ -1,7 +1,7 @@
 # Yubo Zhi (normanzyb@gmail.com)
 
 TRG	= elec3222a1
-SUBDIRS	+= FreeRTOS
+SUBDIRS	+= FreeRTOS common
 INCDIRS	+= .
 
 PRGER		= usbasp

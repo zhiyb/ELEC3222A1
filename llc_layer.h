@@ -4,9 +4,13 @@
 #include <stdint.h>
 
 // RTOS
+#ifndef SIMULATION
 #include <FreeRTOSConfig.h>
 #include <FreeRTOS.h>
 #include <queue.h>
+#else
+#include "simulation.h"
+#endif
 
 #ifdef __cplusplus
 extern "C" {
@@ -45,6 +49,7 @@ uint8_t llc_tx(uint8_t pri, uint8_t addr, uint8_t len, void *ptr);
 uint8_t llc_written();
 // Copy data to tx queue
 void llc_write(void *data, uint8_t length);
+void llc_report();
 
 #ifdef __cplusplus
 }
