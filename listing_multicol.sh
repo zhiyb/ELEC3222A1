@@ -1,11 +1,12 @@
 #! /bin/bash
 
-files=($(while (($# != 0)); do
-	find "$1" -type f -name '*.cpp'
-	find "$1" -type f -name '*.c'
-	find "$1" -type f -name '*.h'
-	shift
-done | sort | fgrep -v '/FreeRTOS/'))
+files=($(echo $@ | sort))
+#files=($(while (($# != 0)); do
+#	find "$1" -type f -name '*.cpp'
+#	find "$1" -type f -name '*.c'
+#	find "$1" -type f -name '*.h'
+#	shift
+#done | sort | fgrep -v '/FreeRTOS/'))
 
 echo '\documentclass[a4paper,notitlepage,10pt]{report}
 \usepackage[left=2cm,right=2cm,top=2.5cm,bottom=2.5cm,footskip=1.25cm]{geometry}
