@@ -5,6 +5,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <ctype.h>
+#include <colours.h>
 #include "llc_layer.h"
 #include "mac_layer.h"
 #include "phy_layer.h"
@@ -48,6 +49,10 @@ static void mac_tx_data(uint8_t data)
 
 void mac_tx(uint8_t addr, void *data, uint8_t len)
 {
+#if MAC_DEBUG > 1
+	printf_P(PSTR(ESC_BLUE "MAC-TX,%02x-%u;"), addr, len);
+#endif
+
 	// Thread safe: lock mutex
 	while (xSemaphoreTake(mac_semaphore, portMAX_DELAY) != pdTRUE);
 
@@ -102,30 +107,36 @@ void mac_rx_task(void *param)
 	struct mac_buffer_t *buffer = 0;
 	uint8_t *ptr = 0, size = 0, data;
 	uint16_t checksum = 0;
-	puts_P(PSTR("\e[96mMAC RX task initialised."));
+#if MAC_DEBUG > 0
+	puts_P(PSTR(ESC_CYAN "MAC RX task initialised."));
+#endif
 
 loop:
 	// Receive 1 byte data from PHY
 	data = phy_rx();
 #if MAC_DEBUG > 2
-	fputs_P(PSTR("\e[90m"), stdout);
-	if (data == FRAME_HEADER)
+	if (data == FRAME_HEADER) {
+		fputs_P(PSTR(ESC_GREY), stdout);
 		putchar('^');
-	else if (data == FRAME_ESCAPE)
+	} else if (data == FRAME_ESCAPE)
 		putchar('\\');
 	else if (isprint(data))
 		putchar(data);
-	else
-		putchar('.');
-	putchar(';');
+	else {
+		putchar('`');
+		putchar('0' + ((data >> 6) & 0x07));
+		putchar('0' + ((data >> 3) & 0x07));
+		putchar('0' + ((data >> 0) & 0x07));
+	}
+	//putchar(';');
 #endif
 
 	switch (status) {
 	case WaitingHeader:
 		if (data != FRAME_HEADER) {
 			phy_receive();	// Reset receiver
-#if MAC_DEBUG > 1
-			fputs_P(PSTR("\e[90mMAC-RST;"), stdout);
+#if MAC_DEBUG > 2
+			fputs_P(PSTR(ESC_MAGENTA "MAC-RST;"), stdout);
 #endif
 			break;
 		}
@@ -167,33 +178,35 @@ loop:
 					frame.len = size - FRAME_MIN_SIZE;	// Only payload length
 					frame.ptr = buffer;
 					frame.payload = buffer->payload;
+					if (buffer->src == mac_address())
+						mac_address_update(mac_address() + 1);
 					// Send to upper layer
 					if (xQueueSendToBack(mac_rx, &frame, 0) == pdTRUE) {
 #if MAC_DEBUG > 1
-						fputs_P(PSTR("\e[90mMAC-RECV;"), stdout);
+						fputs_P(PSTR(ESC_YELLOW "MAC-RECV;"), stdout);
 #endif
 						buffer = pvPortMalloc(sizeof(struct mac_buffer_t));
 						if (buffer == 0) {
 							status = WaitingHeader;
 #if MAC_DEBUG >= 0
-							fputs_P(PSTR("\e[90mMAC-B-FAIL;"), stdout);
+							fputs_P(PSTR(ESC_GREY "MAC-MEM-FAIL;"), stdout);
 #endif
 							goto loop;
 						}
 					} else {
-#if MAC_DEBUG >= 0
-						fputs_P(PSTR("\e[90mMAC-Q-FAIL;"), stdout);
+#if MAC_DEBUG > 0
+						fputs_P(PSTR(ESC_GREY "MAC-Q-FAIL;"), stdout);
 #endif
 					}
 				} else {
-#if MAC_DEBUG > 0
-					fputs_P(PSTR("\e[93mDROP;"), stdout);
+#if MAC_DEBUG > 1
+					fputs_P(PSTR(ESC_MAGENTA "MAC-DROP;"), stdout);
 #endif
 				}
 			} else {
 				status = ReceivingData;
-#if MAC_DEBUG > 1
-				fputs_P(PSTR("\e[90mMAC-RESET;"), stdout);
+#if MAC_DEBUG > 2
+				fputs_P(PSTR(ESC_MAGENTA "MAC-RST;"), stdout);
 #endif
 			}
 
@@ -204,11 +217,15 @@ loop:
 			goto loop;
 		case FRAME_ESCAPE:
 			status = ReceivingEscaped;
+#if MAC_DEBUG > 2
+			fputs_P(PSTR(ESC_GREY "MAC-ESC;"), stdout);
+#endif
 			goto loop;
 		}
 
 		// Data reception
 	case ReceivingEscaped:
+		status = ReceivingData;
 		// Buffer overwrite
 		if (size++ == FRAME_MAX_SIZE) {
 			status = WaitingHeader;
@@ -219,8 +236,8 @@ loop:
 		if (size == 1)	// Destination address received
 			if (buffer->dest != mac_address() && buffer->dest != MAC_BROADCAST) {
 				status = WaitingHeader;	// Not for this station
-#if MAC_DEBUG > 1
-				fputs_P(PSTR("\e[90mMAC-SKIP;"), stdout);
+#if MAC_DEBUG > 2
+				fputs_P(PSTR(ESC_GREY "MAC-SKIP;"), stdout);
 #endif
 			}
 #endif
@@ -253,7 +270,7 @@ uint8_t mac_address()
 
 void mac_init()
 {
-	mac_rx = xQueueCreate(2, sizeof(struct mac_frame));
+	mac_rx = xQueueCreate(6, sizeof(struct mac_frame));
 	while ((mac_semaphore = xSemaphoreCreateMutex()) == NULL);
-	while (xTaskCreate(mac_rx_task, "MAC RX", configMINIMAL_STACK_SIZE, NULL, tskPROT_PRIORITY, NULL) != pdPASS);
+	while (xTaskCreate(mac_rx_task, "MAC RX", configMINIMAL_STACK_SIZE, NULL, tskHIGH_PRIORITY, NULL) != pdPASS);
 }
