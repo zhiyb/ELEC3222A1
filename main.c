@@ -68,45 +68,6 @@ void app_rx_task(void *param)
 loop:
 	len = sizeof(buf);
 	soc_recvfrom(sid_text, buf, &len, &addr, &port);
-#if 0
-	if (*ptr == 'L') {		// RGB LED update
-		uint8_t length = len - 1;
-		ptr++;
-
-		// Offset + data
-		while (length > 1 + 6) {
-			uint8_t idx = c2hex(*ptr++);
-			if (idx > RGBLED_NUM)
-				break;
-
-			uint32_t data = 0;
-			uint8_t i = 6;
-			while (i--) {
-				uint8_t num = c2hex(*ptr++);
-				// Error converting
-				if (num == 0xff) {
-					rgbLED_refresh();
-					goto print;
-				}
-				data = (data << 4) | num;
-			}
-			length -= 1 + 6;
-			rgbLED[idx] = data;
-		}
-		rgbLED_refresh();
-	} else if (*ptr == 'G') {	// GPIO control
-		uint8_t mask = 0x80;
-		uint8_t length = len - 1;
-		length = length > 8 ? 8 : length;
-		while (length--) {
-			if (*++ptr == '0')
-				PORTA &= ~mask;
-			else
-				PORTA |= mask;
-			mask >>= 1;
-		}
-	}
-#endif
 	//buf = pkt;
 	uart0_lock();
 	ptr = buf;

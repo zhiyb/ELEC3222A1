@@ -36,7 +36,7 @@ struct app_packet {
 	uint8_t *data;
 };
 
-static inline void tran_tx(uint8_t sid, uint8_t len, const void *data, uint8_t addr, uint8_t port)
+static inline uint8_t tran_tx(uint8_t sid, uint8_t len, const void *data, uint8_t addr, uint8_t port)
 {
 	const uint8_t *str = data;
 	uint8_t length;
@@ -77,11 +77,15 @@ static inline void tran_tx(uint8_t sid, uint8_t len, const void *data, uint8_t a
 		length = pck -> length + STRUCT_SIZE;
 		
 		//printf_P(PSTR("CTRL:%u, NetpackLength:%u, App data:%u, package num: %u, check sum: %u, sizeofPck: %u\n "), ctrl[1], length, len, i, checksum, (len - (i * DATA_SIZE) + STRUCT_SIZE));
-		net_tx(addr, length, pck);
+		if (!net_tx(addr, length, pck)) {
+			vPortFree(pck);
+			return 0;
+		}
 		
 		//printf_P(PSTR(" package num: %d transfer"), i);
 		vPortFree(pck);
 	}
+	return 1;
 }
 
 void tran_rx_task(void *param)
@@ -193,6 +197,7 @@ uint8_t soc_sendto(uint8_t sid, void *buf, uint8_t len, uint8_t addr, uint8_t po
 {
 	if (sid == 0xff)
 		return 0;
-	tran_tx(sid, len, buf, addr, port);
-	return len;
+	if (tran_tx(sid, len, buf, addr, port))
+		return len;
+	return 0;
 }
