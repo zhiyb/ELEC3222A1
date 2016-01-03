@@ -119,9 +119,11 @@ Simulator::Simulator(QWidget *parent) : QWidget(parent)
 
 	addr.mac = 0;
 	addr.net = 0;
+#if 1
 	gSocket.setSocketOption(QAbstractSocket::MulticastLoopbackOption, 1);
-	if (!gSocket.bind(BASE + MAC_BROADCAST, QAbstractSocket::ShareAddress))
+	if (!gSocket.bind(BASE + MAC_BROADCAST, QAbstractSocket::ShareAddress | QAbstractSocket::ReuseAddressHint))
 		qFatal("Error binding socket");
+#endif
 	updateAddr();
 
 	sim_start();
