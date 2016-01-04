@@ -30,7 +30,6 @@
  * All core functionality is implemented within this file.
  */
 
-
 /************************
  * standard includes
 */
@@ -161,27 +160,6 @@ uint8_t phy_rx()
 	return data;
 }
 
-//! Interrupt handler to handle all transmit and receive data transfers to the rfm12.
-/** The receiver will generate an interrupt request (IT) for the
-* microcontroller - by pulling the nIRQ pin low - on the following events:
-* - The TX register is ready to receive the next byte (RGIT)
-* - The FIFO has received the preprogrammed amount of bits (FFIT)
-* - Power-on reset (POR) 
-* - FIFO overflow (FFOV) / TX register underrun (RGUR) 
-* - Wake-up timer timeout (WKUP) 
-* - Negative pulse on the interrupt input pin nINT (EXT) 
-* - Supply voltage below the preprogrammed value is detected (LBD) 
-*
-* The rfm12 status register is read to determine which event has occured.
-* Reading the status register will clear the event flags.
-*
-* The interrupt handles the RGIT and FFIT events by default.
-* Upon specific configuration of the library the WKUP and LBD events
-* are handled additionally.
-*
-* \see rfm12_control_t, rf_rx_buffer_t and rf_tx_buffer_t
-*/
-
 #include <stdio.h>
 ISR(RFM12_INT_VECT)
 {
@@ -204,40 +182,6 @@ ISR(RFM12_INT_VECT)
 		//for the case in which another interrupt condition occured while we were handeling
 		//the first one.
 		recheck_interrupt = 0;
-
-#if 0
-		//low battery detector feature
-		#if RFM12_LOW_BATT_DETECTOR
-			if (status & (RFM12_STATUS_LBD >> 8)) {
-				//debug
-				#if RFM12_UART_DEBUG >= 2
-					uart_putc('L');
-				#endif
-
-				//set status variable to low battery
-				ctrl.low_batt = RFM12_BATT_LOW;
-				recheck_interrupt = 1;
-			}
-		#endif /* RFM12_LOW_BATT_DETECTOR */
-
-		//wakeup timer feature
-		#if RFM12_USE_WAKEUP_TIMER
-			if (status & (RFM12_STATUS_WKUP >> 8)) {
-				//debug
-				#if RFM12_UART_DEBUG >= 2
-					uart_putc('W');
-				#endif
-
-				ctrl.wkup_flag = 1;
-				recheck_interrupt = 1;
-			}
-			if (status & ((RFM12_STATUS_WKUP | RFM12_STATUS_FFIT) >> 8) ) {
-				//restart the wakeup timer by toggling the bit on and off
-				rfm12_data(ctrl.pwrmgt_shadow & ~RFM12_PWRMGT_EW);
-				rfm12_data(ctrl.pwrmgt_shadow);
-			}
-		#endif /* RFM12_USE_WAKEUP_TIMER */
-#endif
 
 		//check if the fifo interrupt occurred
 		if (status & (RFM12_STATUS_FFIT >> 8)) {
@@ -355,23 +299,6 @@ static const uint16_t init_cmds[] = {
 	(RFM12_CMD_PWRMGT | PWRMGT_RECEIVE),
 };
 
-//! This is the main library initialization function
-/**This function takes care of all module initialization, including:
-* - Setup of the used frequency band and external capacitor
-* - Setting the exact frequency (channel)
-* - Setting the transmission data rate
-* - Configuring various module related rx parameters, including the amplification
-* - Enabling the digital data filter
-* - Enabling the use of the modules fifo, as well as enabling sync pattern detection
-* - Configuring the automatic frequency correction
-* - Setting the transmit power
-*
-* This initialization function also sets up various library internal configuration structs and
-* puts the module into receive mode before returning.
-*
-* \note Please note that the transmit power and receive amplification values are currently hard coded.
-* Have a look into rfm12_hw.h for possible settings.
-*/
 void phy_init(void) {
 	//initialize spi
 #ifdef __PLATFORM_AVR__

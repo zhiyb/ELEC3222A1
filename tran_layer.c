@@ -55,13 +55,13 @@ static inline uint8_t tran_tx(uint8_t sid, uint8_t len, const void *data, uint8_
 		if(ctrl[1] == 1)
 		{
 			if ((pck = pvPortMalloc(len - (i * DATA_SIZE) + STRUCT_SIZE)) == 0)
-				return;
+				return 0;
 			pck -> length = len % DATA_SIZE;
 		}
 		else
 		{
 			if ((pck = pvPortMalloc(DATA_SIZE + STRUCT_SIZE)) == 0)
-				return;
+				return 0;
 			pck -> length = DATA_SIZE;
 		}
 		struct socket_t *sp = sockets + sid;
