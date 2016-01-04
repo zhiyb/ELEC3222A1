@@ -85,6 +85,7 @@ Simulator::Simulator(QWidget *parent) : QWidget(parent)
 	QHBoxLayout *hLay;
 	QVBoxLayout *vLay;
 
+	// This is a long string so that it need to be split into multiple frames
 	lay->addLayout(hLay = new QHBoxLayout);
 	hLay->addWidget(new QLabel(tr("NET address")));
 	hLay->addWidget(this->netAddr = new QLineEdit("0"));
@@ -105,6 +106,11 @@ Simulator::Simulator(QWidget *parent) : QWidget(parent)
 	send->setDefault(true);
 
 	lay->addLayout(hLay = new QHBoxLayout);
+	hLay->addWidget(new QLabel(tr("Transmission")));
+	hLay->addWidget(new QLabel(tr("Reception")));
+	hLay->addWidget(new QLabel(tr("Memory allocation")));
+
+	lay->addLayout(hLay = new QHBoxLayout);
 	hLay->addWidget(tx = new QListWidget);
 	hLay->addWidget(rx = new QListWidget);
 
@@ -114,16 +120,20 @@ Simulator::Simulator(QWidget *parent) : QWidget(parent)
 	vLay->addWidget(mem = new QListWidget);
 
 	lay->addLayout(hLay = new QHBoxLayout);
+	hLay->addWidget(new QLabel(tr("Transmission raw bytes")));
+	hLay->addWidget(new QLabel(tr("Reception raw bytes")));
+
+	lay->addLayout(hLay = new QHBoxLayout);
 	hLay->addWidget(transmitLog = new QListWidget);
 	hLay->addWidget(receivedLog = new QListWidget);
 
 	addr.mac = 0;
 	addr.net = 0;
-#if 1
-	gSocket.setSocketOption(QAbstractSocket::MulticastLoopbackOption, 1);
-	if (!gSocket.bind(BASE + MAC_BROADCAST, QAbstractSocket::ShareAddress | QAbstractSocket::ReuseAddressHint))
+	socket.setSocketOption(QUdpSocket::MulticastLoopbackOption, 1);
+	socket.setSocketOption(QAbstractSocket::MulticastTtlOption, 2);
+	if (!gSocket.bind(QHostAddress("127.0.0.1"), BASE + MAC_BROADCAST, QUdpSocket::ShareAddress | QUdpSocket::ReuseAddressHint))
 		qFatal("Error binding socket");
-#endif
+	gSocket.joinMulticastGroup(QHostAddress("127.0.0.1"));
 	updateAddr();
 
 	sim_start();
@@ -199,7 +209,8 @@ void Simulator::updateAddr()
 	addr.mac = macAddr->text().toUInt(0, 16);
 	addr.net = netAddr->text().toUInt(0, 16);
 	socket.close();
-	if (socket.bind(BASE + addr.mac)) {
+	if (socket.bind(QHostAddress("127.0.0.1"), BASE + addr.mac)) {
+		socket.joinMulticastGroup(QHostAddress("127.0.0.1"));
 		QString str = tr("Simulator, mac: %1, net: %2").arg(addr.mac, 0, 16).arg(addr.net, 0, 16);
 		setWindowTitle(str);
 	}
@@ -208,7 +219,7 @@ void Simulator::updateAddr()
 void Simulator::transmit(uint8_t addr, QByteArray &data)
 {
 	transmitLog->addItem(tr("A: %1, L: %2 => %3").arg(addr, 0, 16).arg(data.size()).arg(dataString(data.data(), data.size())));
-	socket.writeDatagram(data, QHostAddress::LocalHost, BASE + addr);
+	socket.writeDatagram(data, QHostAddress("127.0.0.1"), BASE + addr);
 	socket.waitForBytesWritten();
 	emit scrollTransmitLog();
 }
