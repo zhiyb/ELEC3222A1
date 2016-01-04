@@ -119,11 +119,11 @@ loop:
 		fputs_P(PSTR(ESC_GREY), stdout);
 		putchar('^');
 	} else if (data == FRAME_ESCAPE)
-		putchar('\\');
+		putchar('`');
 	else if (isprint(data))
 		putchar(data);
 	else {
-		putchar('`');
+		putchar('\\');
 		putchar('0' + ((data >> 6) & 0x07));
 		putchar('0' + ((data >> 3) & 0x07));
 		putchar('0' + ((data >> 0) & 0x07));
