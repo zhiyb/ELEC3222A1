@@ -24,28 +24,6 @@
  *                                                    *
  ******************************************************/
 
-/*
-	Connect the RFM12 to the AVR as follows:
-
-	RFM12           | AVR
-	----------------+------------
-	SDO             | MISO
-	nIRQ            | INT0
-	FSK/DATA/nFFS   | VCC
-	DCLK/CFIL/FFIT  |  -
-	CLK             |  -
-	nRES            |  -
-	GND             | GND
-	ANT             |  -
-	VDD             | VCC
-	GND             | GND
-	nINT/VDI        | -
-	SDI             | MOSI
-	SCK             | SCK
-	nSEL            | Slave select pin defined below
-*/
-
-
 /************************
  * RFM12 PIN DEFINITIONS
  */
@@ -66,7 +44,6 @@
 //this is the hardware SS pin of the AVR - it 
 //needs to be set to output for the spi-interface to work 
 //correctly, independently of the CS pin used for the RFM12
-
 
 /************************
  * RFM12 CONFIGURATION OPTIONS
@@ -180,29 +157,5 @@
  * callback function in order to receive packets.
  */
 #define RFM12_USE_RX_CALLBACK 0
-
-
-/************************
- * RFM12BP support (high power version of RFM12)
- */
-
-//To use RFM12BP, which needs control signals for RX enable and TX enable,
-//use these defines (set to your pinout of course).
-//The TX-Part can also be used to control a TX-LED with the nomral RFM12
-
-/*
-	#define RX_INIT_HOOK  DDRD |= _BV(PD5)
-	#define RX_LEAVE_HOOK PORTD &= ~_BV(PD5)
-	#define RX_ENTER_HOOK PORTD |= _BV(PD5)
-
-	#define TX_INIT_HOOK  DDRD |= _BV(PD4)
-	#define TX_LEAVE_HOOK PORTD &= ~_BV(PD4)
-	#define TX_ENTER_HOOK PORTD |= _BV(PD4)
-*/
-
-/************************
- * UART DEBUGGING
- * en- or disable debugging via uart.
- */
 
 #define RFM12_UART_DEBUG 0

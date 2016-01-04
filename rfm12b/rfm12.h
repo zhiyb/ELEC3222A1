@@ -29,14 +29,6 @@
  * This header represents the library's core API.
  */
 
-/******************************************************
- *                                                    *
- *    NO  C O N F I G U R A T I O N  IN THIS FILE     *
- *                                                    *
- *      ( thou shalt not change lines below )         *
- *                                                    *
- ******************************************************/
- 
 #ifndef _RFM12_H
 #define _RFM12_H
 
@@ -50,10 +42,6 @@ extern "C" {
 #include "include/rfm12_core.h"
 #include <ctype.h>
 #include <stdio.h>
-
-/************************
- * function protoypes
-*/
 
 /************************
  * include headers for all the optional stuff in here
